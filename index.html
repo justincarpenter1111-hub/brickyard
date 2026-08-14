@@ -10415,6 +10415,80 @@ function bmStepAudio(dt) {
   } catch (e) {}
 }
 
+/* ---------- the city map ----------
+   Heading-up minimap on the little canvas; tap it for the big map. Palette
+   and element budget follow Grok's design (roads as the ground, blocks as
+   tiles, landmarks only — no live-traffic noise).                          */
+const bmMapCv = document.getElementById('minimap');
+const bmMapCtx = bmMapCv ? bmMapCv.getContext('2d') : null;
+let bmBigWrap = null, bmBigCv = null;
+const bmHomePos = { x: 40, z: 46 };          // set for real when the home parcel builds
+function bmChunkColor(i, j) {
+  const t = bmChunkType(i, j);
+  if (t === 'park') return '#7CB342';
+  if (t === 'plaza') return '#D9DEE3';
+  const d = bmDistrict(i, j);
+  return d === 'downtown' ? '#D8CBB2' : d === 'suburb' ? '#EAE4D2' : '#E2DAC6';
+}
+function bmDrawMap(ctx, size, range, headingUp) {
+  const px = play.x / P, pz = play.z / P;
+  ctx.fillStyle = '#C5CBD0';
+  ctx.fillRect(0, 0, size, size);
+  const s = size / (range * 2);
+  ctx.save();
+  ctx.translate(size / 2, size / 2);
+  if (headingUp) ctx.rotate(-play.yaw);
+  ctx.scale(s, -s);
+  const ci = Math.floor(px / BM.PITCH), cj = Math.floor(pz / BM.PITCH);
+  const R2 = Math.ceil(range / BM.PITCH) + 1;
+  for (let di = -R2; di <= R2; di++) for (let dj = -R2; dj <= R2; dj++) {
+    const i = ci + di, j = cj + dj;
+    ctx.fillStyle = bmChunkColor(i, j);
+    ctx.fillRect(i * BM.PITCH + 24 - px, j * BM.PITCH + 24 - pz, 64, 64);
+    if (bmChunkType(i, j) === 'city' && ((bmSeed(i, j) >>> 8) % 19) === 0) {
+      ctx.fillStyle = '#FCAC00';                              // a clock tower to steer by
+      const q = (bmSeed(i, j) >>> 4) & 3;
+      ctx.fillRect(i * BM.PITCH + 24 + (q >> 1) * 32 + 10 - px,
+                   j * BM.PITCH + 24 + (q & 1) * 32 + 10 - pz, 12, 12);
+    }
+  }
+  // home, always
+  ctx.fillStyle = '#E53935';
+  ctx.beginPath();
+  ctx.arc(bmHomePos.x - px, bmHomePos.z - pz, 6, 0, 7);
+  ctx.fill();
+  ctx.restore();
+  // the player, dead centre, pointing up (heading-up) or along yaw (north-up)
+  ctx.save();
+  ctx.translate(size / 2, size / 2);
+  if (!headingUp) ctx.rotate(play.yaw + Math.PI);
+  ctx.fillStyle = '#FFD54F';
+  ctx.strokeStyle = '#7A5900';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(0, 2); ctx.lineTo(-5, 5);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function bmInitBigMap() {
+  if (bmBigWrap) return;
+  bmBigWrap = document.createElement('div');
+  bmBigWrap.style.cssText = 'position:fixed;inset:0;z-index:60;display:none;align-items:center;' +
+    'justify-content:center;background:rgba(10,12,16,.55)';
+  bmBigCv = document.createElement('canvas');
+  bmBigCv.width = bmBigCv.height = 520;
+  bmBigCv.style.cssText = 'width:min(78vmin,520px);height:min(78vmin,520px);border-radius:20px;' +
+    'box-shadow:0 12px 40px rgba(0,0,0,.5);border:3px solid #f4efe4';
+  bmBigWrap.appendChild(bmBigCv);
+  bmBigWrap.addEventListener('pointerdown', () => { bmBigWrap.style.display = 'none'; });
+  document.body.appendChild(bmBigWrap);
+  if (bmMapCv) bmMapCv.addEventListener('pointerdown', e => {
+    if (!beastOn) return;
+    e.stopPropagation();
+    bmBigWrap.style.display = 'flex';
+  });
+}
+
 /* ---------- performance probe (for the work loop's test step) ---------- */
 const bmFrameMs = [];
 function bmStats(dt) {
@@ -10483,10 +10557,11 @@ function setBeastMode(on) {
     bmBuildSignAtlas();
     bmStreamChunks(99);
     bmSyncProps();
-    for (const id of ['hud', 'fabs', 'minimap', 'pickChip', 'nudge', 'worldRail'])
+    for (const id of ['hud', 'fabs', 'pickChip', 'nudge', 'worldRail'])
       document.getElementById(id).classList.add('hidden');
-    for (const id of ['stick', 'stickZone', 'jumpBtn', 'beastHud'])
+    for (const id of ['stick', 'stickZone', 'jumpBtn', 'beastHud', 'minimap'])
       document.getElementById(id).classList.remove('hidden');
+    bmInitBigMap();
     document.getElementById('bBeast').classList.add('on');
     select(null); hideGhost();
     toast('Beast Mode — the city never ends');
@@ -10528,6 +10603,7 @@ function setBeastMode(on) {
       document.getElementById(id).classList.remove('hidden');
     for (const id of ['stick', 'stickZone', 'jumpBtn', 'beastHud', 'beastDrive', 'minimap'])
       document.getElementById(id).classList.add('hidden');
+    if (bmBigWrap) bmBigWrap.style.display = 'none';
     document.getElementById('bBeast').classList.remove('on');
     updateHUD();
   }
@@ -10555,6 +10631,11 @@ function stepBeast(dt) {
   bmDayNight();
   bmUpdateLamps();
   bmUpdateCamera();
+  if (bmMapCtx && (bmTick % 6) === 0) {
+    bmDrawMap(bmMapCtx, 160, 220, true);
+    if (bmBigWrap && bmBigWrap.style.display === 'flex')
+      bmDrawMap(bmBigCv.getContext('2d'), 520, 620, false);
+  }
   bmStats(dt);
 }
 document.getElementById('bBeast').onclick = () => setBeastMode(!beastOn);
