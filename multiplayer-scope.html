@@ -1,0 +1,341 @@
+<title>Online Multiplayer — Scope</title>
+<style>
+  :root {
+    --paper:#EEF0F3; --panel:#F7F8FA; --sunk:#E4E7EC;
+    --ink:#14181F; --ink-2:#41495A; --ink-3:#6B7488;
+    --rule:#C9CED6; --rule-2:#DDE1E7;
+    --accent:#1B5FC4; --accent-soft:#E3EBF8;
+    --amber:#9A5D08; --amber-soft:#F7EBD8;
+    --rust:#A83226; --rust-soft:#F7E3E0;
+    --green:#1F6B45;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:#12151A; --panel:#171B22; --sunk:#1D222B;
+      --ink:#E4E8EF; --ink-2:#A8B1C1; --ink-3:#7A8497;
+      --rule:#2B313C; --rule-2:#232932;
+      --accent:#6BA5FF; --accent-soft:#16233A;
+      --amber:#D9A055; --amber-soft:#2A2114;
+      --rust:#E08578; --rust-soft:#2C1917;
+      --green:#5FBF8E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#12151A; --panel:#171B22; --sunk:#1D222B;
+    --ink:#E4E8EF; --ink-2:#A8B1C1; --ink-3:#7A8497;
+    --rule:#2B313C; --rule-2:#232932;
+    --accent:#6BA5FF; --accent-soft:#16233A;
+    --amber:#D9A055; --amber-soft:#2A2114;
+    --rust:#E08578; --rust-soft:#2C1917;
+    --green:#5FBF8E;
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--paper); color:var(--ink);
+    font:16px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono, code, th, .fig, .tag, .rail b {
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  .wrap { max-width:1080px; margin:0 auto; padding:64px 28px 120px; }
+
+  /* masthead */
+  .mast { border-bottom:2px solid var(--ink); padding-bottom:22px; }
+  .kicker { font-size:11.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  h1 { font-size:clamp(32px,5vw,50px); line-height:1.04; letter-spacing:-.026em;
+    font-weight:800; margin:12px 0 14px; text-wrap:balance; }
+  .stand { font-size:18.5px; line-height:1.5; color:var(--ink-2); max-width:60ch; margin:0; }
+  .meta { display:flex; flex-wrap:wrap; gap:8px 26px; margin-top:22px;
+    font-size:12.5px; color:var(--ink-3);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+
+  /* sections on a spec-sheet rail */
+  section { display:grid; grid-template-columns:104px 1fr; gap:0 34px;
+    padding:44px 0 8px; border-bottom:1px solid var(--rule-2); }
+  section:last-of-type { border-bottom:0; }
+  .rail { font-size:11.5px; letter-spacing:.11em; text-transform:uppercase;
+    color:var(--ink-3); padding-top:7px; }
+  .rail b { display:block; font-size:19px; letter-spacing:0; color:var(--accent);
+    font-weight:700; margin-bottom:5px; }
+  .body { min-width:0; max-width:70ch; }
+  h2 { font-size:25px; letter-spacing:-.016em; font-weight:750; margin:0 0 14px;
+    text-wrap:balance; }
+  h3 { font-size:16px; font-weight:700; margin:26px 0 8px; letter-spacing:-.005em; }
+  p { margin:0 0 14px; }
+  ul { margin:0 0 14px; padding-left:20px; }
+  li { margin-bottom:7px; }
+  strong { font-weight:680; }
+  code { font-size:.9em; background:var(--sunk); padding:1.5px 5px;
+    border:1px solid var(--rule-2); }
+  a { color:var(--accent); text-underline-offset:2px; }
+  a:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+
+  /* measured-data panel */
+  .measured { background:var(--panel); border:1px solid var(--rule);
+    padding:20px 22px; margin:6px 0 18px; }
+  .measured h4 { margin:0 0 4px; font-size:11.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; }
+  .figs { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+    gap:18px 22px; margin-top:14px; }
+  .fig b { display:block; font-size:27px; font-weight:700; letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums; line-height:1.1; }
+  .fig span { display:block; font-size:11.5px; color:var(--ink-3); margin-top:3px;
+    line-height:1.35; }
+
+  /* tables */
+  .scroll { overflow-x:auto; margin:6px 0 18px; }
+  table { border-collapse:collapse; width:100%; min-width:520px; font-size:14.5px; }
+  th { text-align:left; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); font-weight:600; padding:0 14px 8px 0;
+    border-bottom:1px solid var(--rule); white-space:nowrap; }
+  td { padding:11px 14px 11px 0; border-bottom:1px solid var(--rule-2);
+    vertical-align:top; }
+  td.num { font-variant-numeric:tabular-nums; white-space:nowrap;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13.5px; }
+
+  /* tags */
+  .tag { display:inline-block; font-size:10.5px; letter-spacing:.07em;
+    text-transform:uppercase; padding:2.5px 7px; border:1px solid currentColor;
+    font-weight:600; white-space:nowrap; }
+  .t-done { color:var(--green); }
+  .t-new  { color:var(--accent); }
+  .t-risk { color:var(--rust); }
+
+  /* callouts */
+  .note { border-left:3px solid var(--accent); background:var(--accent-soft);
+    padding:14px 18px; margin:0 0 18px; }
+  .note.warn { border-left-color:var(--amber); background:var(--amber-soft); }
+  .note.stop { border-left-color:var(--rust); background:var(--rust-soft); }
+  .note p:last-child { margin-bottom:0; }
+  .note b { font-weight:700; }
+
+  /* protocol block */
+  pre { background:var(--panel); border:1px solid var(--rule); padding:16px 18px;
+    overflow-x:auto; font-size:13px; line-height:1.65; margin:0 0 18px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  pre .c { color:var(--ink-3); }
+
+  /* question list */
+  ol.q { counter-reset:q; list-style:none; padding:0; margin:0; }
+  ol.q li { counter-increment:q; position:relative; padding:0 0 14px 34px;
+    margin:0; border-bottom:1px solid var(--rule-2); padding-top:14px; }
+  ol.q li:last-child { border-bottom:0; }
+  ol.q li::before { content:counter(q,decimal-leading-zero); position:absolute;
+    left:0; top:15px; font-size:12px; color:var(--accent); font-weight:700;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+
+  @media (max-width:720px) {
+    .wrap { padding:40px 20px 80px; }
+    section { grid-template-columns:1fr; gap:0; padding:34px 0 6px; }
+    .rail { padding:0 0 10px; }
+    .rail b { display:inline; margin-right:8px; }
+  }
+  @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="kicker">Brick Builder · Engineering Scope</div>
+    <h1>Online multiplayer</h1>
+    <p class="stand">Two people building in the same world from different machines. This is what it
+      takes, what it costs, and the four decisions I need from you before writing any of it.</p>
+    <div class="meta">
+      <span>Target: block-build.netlify.app</span>
+      <span>Est. 9–14 dev days</span>
+      <span>Status: not started</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="rail"><b>01</b>The short version</div>
+    <div class="body">
+      <p>The hard part is already done, and not by accident. Every change to the world funnels through
+        <code>createBrick</code> / <code>destroyBrick</code> / <code>moveBrickTo</code> and then
+        <code>pushOp</code> → <code>commit()</code>. That single choke point is where network sync taps in.
+        Per-brick ownership already exists and is enforced on all five destructive paths.</p>
+      <p>What's missing is a server. Netlify is static hosting — it cannot hold a WebSocket open. So
+        multiplayer means adding one small always-on service alongside it. That is the only structural
+        change to how this project ships.</p>
+      <div class="note">
+        <p><b>Recommendation:</b> one room = one Cloudflare Durable Object, via PartyKit. The room owns the
+          authoritative world, validates every op, and broadcasts accepted ops. Netlify keeps serving the
+          game itself.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>02</b>Measured, not guessed</div>
+    <div class="body">
+      <p>I measured the real payloads in the running app before choosing an architecture, because the
+        answer changes completely depending on how big a world is on the wire.</p>
+      <div class="measured">
+        <h4>Payload sizes — measured in browser, gzip via CompressionStream</h4>
+        <div class="figs">
+          <div class="fig"><b>34 KB</b><span>Village II full snapshot, gzipped (8,581 bricks)</span></div>
+          <div class="fig"><b>196 KB</b><span>Grand Village full snapshot, gzipped (50,000 bricks)</span></div>
+          <div class="fig"><b>107 B</b><span>One place/delete op on the wire</span></div>
+          <div class="fig"><b>59 B</b><span>One presence tick (position, yaw, camera)</span></div>
+        </div>
+      </div>
+      <p>Two conclusions. First, even the worst-case world is a <strong>196 KB one-time cost on join</strong> —
+        entirely survivable, so we don't need CRDTs or chunked streaming. Second, ops and presence are so
+        small that bandwidth is a non-issue; the cost driver is message <em>count</em>, not size.</p>
+      <h3>The join shortcut</h3>
+      <p>Both villages are generated from a fixed seed — <code>rng(31415926)</code> for Village II. So a
+        joining client doesn't need the brick list at all. Send
+        <code>{world:"village_two", seed, ops:[…]}</code> and let them regenerate locally. A fresh join drops
+        from 196 KB to <strong>well under 1 KB</strong> plus whatever's been built since. Full snapshots stay as
+        the fallback for hand-built worlds.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>03</b>Architecture</div>
+    <div class="body">
+      <p>Server-authoritative, not peer-to-peer. Clients send <em>intents</em>; the room validates and
+        broadcasts <em>accepted ops</em> with a monotonic sequence number. Clients apply ops in sequence
+        order. A client that falls behind re-syncs from the snapshot.</p>
+      <p>Optimistic local application stays — you see your own brick land instantly, and it's reconciled
+        (or rolled back) when the server's version of that op arrives.</p>
+      <h3>Why not WebRTC peer-to-peer</h3>
+      <p>Tempting, since two players need no relay. But it still needs a signalling service, and NAT
+        traversal fails often enough that you need a TURN relay — which costs more than the Durable Object
+        it was meant to avoid. It also makes one player the host, so the world dies when they close the tab.</p>
+      <h3>Op protocol</h3>
+      <p>Deliberately mirrors the existing <code>pushOp</code> shapes, so most of the client work is
+        serialising something the app already produces.</p>
+<pre><span class="c">// client → room</span>
+{ t:"add",   b:{id,type,color,x,z,base,rot,owner} }
+{ t:"del",   id }
+{ t:"move",  id, to:{x,z,base,rot} }
+{ t:"door",  id, open }
+{ t:"pose",  x,y,z,yaw,cam }        <span class="c">// presence, 5–10 Hz, not logged</span>
+
+<span class="c">// room → clients</span>
+{ seq, t:"add", b:{…}, by:2 }        <span class="c">// accepted + stamped</span>
+{ t:"reject", ref, why:"owned" }     <span class="c">// your optimistic op is rolled back</span>
+{ t:"sync", world, seed, ops:[…] }   <span class="c">// on join or resync</span></pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>04</b>The hard parts</div>
+    <div class="body">
+      <p>These are the bits that will actually eat the time. None are blockers; all need a decision made
+        deliberately rather than discovered in testing.</p>
+
+      <h3>Brick IDs collide</h3>
+      <p><code>nextId</code> is a plain client-side counter. Two clients building at once will both mint
+        id 8,582. Fix: namespace by player — <code>playerId * 1e7 + n</code>. Simpler than server-assigned
+        ids and keeps offline building working.</p>
+
+      <h3>Undo is the genuinely awkward one</h3>
+      <p>There's one global <code>undoStack</code> today. With two builders that's wrong in both directions:
+        you could undo their work, and your undo could delete a brick they've since built on top of.
+        The rule I'd implement: <strong>you may only undo your own most recent op, and only if the target
+        still exists and nothing rests on it.</strong> Otherwise the undo is refused with a reason. Not
+        perfect, but predictable — which matters more.</p>
+
+      <h3>Moving entities need one authority</h3>
+      <p>The train is the awkward case: <code>train.st</code> and speed advance every frame on whoever is
+        driving. The driver owns it and broadcasts pose at ~10 Hz; everyone else interpolates. Passengers
+        ride the interpolated pose. Doors and carried bricks are just ops and need no special handling.</p>
+
+      <h3>Trust nothing from the client</h3>
+      <p>Ownership is enforced client-side now. That's a UI courtesy, not security — the room has to
+        re-check <code>canEdit</code>, placement legality and grid bounds on every op. Low effort, but it
+        must not be skipped or one stuck client can corrupt the world for everyone.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>05</b>Phases</div>
+    <div class="body">
+      <p>Ordered so something playable exists after the first two days, and each phase is independently
+        shippable. The numbering is a real sequence — later phases depend on earlier ones.</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Phase</th><th>What you can do at the end of it</th><th class="num">Days</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="num">1</td><td><strong>Room + presence</strong></td>
+              <td>Join a shared link and see each other's minifig walking around in real time. No shared building yet.</td><td class="num">1–2</td></tr>
+            <tr><td class="num">2</td><td><strong>Shared building</strong></td>
+              <td>Place and delete bricks and see them appear for the other player. Ownership enforced server-side. ID namespacing.</td><td class="num">3–4</td></tr>
+            <tr><td class="num">3</td><td><strong>Join &amp; persist</strong></td>
+              <td>Leave and come back to the world as you left it. Seed-and-delta sync so joining is instant.</td><td class="num">2–3</td></tr>
+            <tr><td class="num">4</td><td><strong>Entities &amp; undo</strong></td>
+              <td>Trains, doors and carried bricks stay in sync. Undo behaves sanely with two builders.</td><td class="num">2–3</td></tr>
+            <tr><td class="num">5</td><td><strong>Rooms &amp; polish</strong></td>
+              <td>Named rooms, invite links, player list, reconnect handling, "player left" states.</td><td class="num">1–2</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Total: 9–14 days.</strong> Phases 1–2 alone (4–6 days) deliver the thing you actually asked
+        for; 3–5 are what make it hold up in real use.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>06</b>Running cost</div>
+    <div class="body">
+      <p>Cloudflare's free tier is 100,000 requests/day, and inbound WebSocket messages bill at 20:1 —
+        twenty messages count as one request. Outbound messages and pings are free, which suits this
+        shape well, since one build op fans out to every player.</p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Load</th><th class="num">Inbound msg/s</th><th class="num">Billed req/hr</th><th>Against free tier</th></tr></thead>
+          <tbody>
+            <tr><td>2 players, presence at 10 Hz</td><td class="num">20</td><td class="num">3,600</td><td>~27 h/day of continuous play</td></tr>
+            <tr><td>2 players, presence at 5 Hz</td><td class="num">10</td><td class="num">1,800</td><td>~55 h/day</td></tr>
+            <tr><td>Building bursts</td><td class="num">~2</td><td class="num">360</td><td>negligible next to presence</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>For family-scale use this is comfortably <strong>£0/month</strong>. Presence dominates, so if cost ever
+        matters, drop the tick rate and interpolate harder — the change is one constant.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>07</b>Risks</div>
+    <div class="body">
+      <p><span class="tag t-risk">Deploy</span> &nbsp;The project becomes two deploys, not one — Netlify for
+        the game, Cloudflare for the room. Given this folder already resolves to the
+        <em>wrong</em> Netlify site by default, a second target needs its deploy command written down, not remembered.</p>
+      <p style="margin-top:14px;"><span class="tag t-risk">Scope</span> &nbsp;The single-file, no-build
+        constraint holds fine on the client (the network layer is maybe 200 lines inline), but the room
+        server is a separate small TypeScript project. That's a new thing to maintain.</p>
+      <p style="margin-top:14px;"><span class="tag t-risk">Behaviour</span> &nbsp;Two people editing the same
+        stack of bricks will produce surprises no protocol fully removes — someone deletes the brick you're
+        standing on. Worth deciding early whether that's funny or annoying.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>08</b>What I need from you</div>
+    <div class="body">
+      <p>Four decisions. Everything above assumes a default, noted in each — say nothing and I'll build to
+        those.</p>
+      <ol class="q">
+        <li><strong>Who can join?</strong> Anyone with the link, or only a room you name and share?
+          <em>Default: anyone with the link, rooms named by URL.</em></li>
+        <li><strong>Two players, or more?</strong> The architecture handles 4–6 without change, but the
+          UI (player list, colours, presence) grows. <em>Default: build for 2, don't design out more.</em></li>
+        <li><strong>Does the world live on the server?</strong> Or does one player load a world and share
+          it for that session only? <em>Default: server-persisted, so you can come back to it.</em></li>
+        <li><strong>Should ownership stay strict?</strong> Right now P2 cannot touch P1's bricks at all.
+          A shared-build mode where anyone can edit anything is a one-line change.
+          <em>Default: keep it strict, add a room setting later.</em></li>
+      </ol>
+    </div>
+  </section>
+
+</div>

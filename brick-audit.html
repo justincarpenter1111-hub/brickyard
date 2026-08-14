@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brick Fidelity Audit</title>
+<style>
+  :root {
+    --bg:#12151a; --panel:#1b2028; --line:#2b323d; --ink:#e8ecf2; --dim:#8f9aa9;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  header { position:sticky; top:0; z-index:10; background:rgba(18,21,26,.94);
+    backdrop-filter:blur(10px); border-bottom:1px solid var(--line); padding:14px 20px; }
+  h1 { margin:0 0 4px; font-size:17px; letter-spacing:.2px; }
+  .sub { color:var(--dim); font-size:13px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  .chip { border:1px solid var(--line); background:var(--panel); color:var(--ink);
+    border-radius:999px; padding:5px 12px; font-size:12.5px; cursor:pointer; }
+  .chip.on { background:var(--accent); border-color:var(--accent); color:#04121f; font-weight:650; }
+  .tot { margin-left:auto; display:flex; gap:14px; font-size:12.5px; color:var(--dim); }
+  .tot b { color:var(--ink); }
+  main { padding:18px 20px 60px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    overflow:hidden; cursor:pointer; transition:border-color .12s, transform .12s; }
+  .card:hover { border-color:var(--accent); transform:translateY(-2px); }
+  .card img { width:100%; display:block; background:#0d1014; aspect-ratio:1; }
+  .card .nm { padding:8px 10px 2px; font-size:12.5px; font-weight:600; word-break:break-all; }
+  .card .mt { padding:0 10px 10px; font-size:11.5px; color:var(--dim); }
+  .flags { display:flex; gap:4px; padding:0 10px 10px; flex-wrap:wrap; }
+  .f { font-size:10.5px; padding:2px 7px; border-radius:999px; font-weight:650; }
+  .f.ok { background:rgba(63,185,80,.16); color:var(--ok); }
+  .f.warn { background:rgba(210,153,34,.16); color:var(--warn); }
+  .f.bad { background:rgba(248,81,73,.16); color:var(--bad); }
+  /* compare panel */
+  #ovl { position:fixed; inset:0; background:rgba(6,8,11,.9); z-index:50; display:none; }
+  #ovl.on { display:flex; }
+  .sheet { margin:auto; width:min(1180px,96vw); max-height:94vh; overflow:auto;
+    background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+  .sheet h2 { margin:0 0 2px; font-size:16px; }
+  .cmp { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:14px; }
+  @media (max-width:820px){ .cmp { grid-template-columns:1fr; } }
+  .stage { position:relative; background:#0d1014; border:1px solid var(--line);
+    border-radius:12px; overflow:hidden; aspect-ratio:1; }
+  .stage canvas, .stage img { position:absolute; inset:0; width:100%; height:100%; }
+  .stage img { object-fit:contain; }
+  .drop { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:var(--dim); font-size:13px; text-align:center; padding:20px; border:2px dashed var(--line);
+    border-radius:12px; }
+  .drop.hot { border-color:var(--accent); color:var(--accent); }
+  .ctl { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; font-size:12.5px; }
+  .ctl input[type=range] { width:150px; }
+  table { width:100%; border-collapse:collapse; margin-top:14px; font-size:12.5px; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; }
+  td.n { font-variant-numeric:tabular-nums; }
+  .close { float:right; background:none; border:1px solid var(--line); color:var(--dim);
+    border-radius:8px; padding:5px 11px; cursor:pointer; }
+  #boot { padding:40px 20px; color:var(--dim); }
+  iframe { position:absolute; width:900px; height:700px; left:-9999px; top:0; border:0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Brick Fidelity Audit</h1>
+  <div class="sub">Geometry pulled live out of the running app — what you audit is what ships.
+    Measured against the real LEGO spec: 8.0&nbsp;mm stud pitch, 9.6&nbsp;mm brick, 3.2&nbsp;mm plate,
+    4.8&nbsp;mm stud diameter, 1.8&nbsp;mm stud height, 0.2&nbsp;mm clearance.</div>
+  <div class="bar" id="bar"></div>
+</header>
+<div id="boot">Booting the app in a hidden frame and reading its geometry…</div>
+<main><div class="grid" id="grid"></div></main>
+
+<div id="ovl"><div class="sheet">
+  <button class="close" id="close">Close</button>
+  <h2 id="cmpName">—</h2>
+  <div class="sub" id="cmpSub">—</div>
+  <div class="cmp">
+    <div>
+      <div class="stage" id="stage3d"></div>
+      <div class="ctl">
+        <span>Drag to orbit · wheel to zoom</span>
+        <button class="chip" id="reset">Reset view</button>
+      </div>
+    </div>
+    <div>
+      <div class="stage" id="stageRef">
+        <img id="refImg" style="display:none">
+        <div class="drop" id="drop">Drop a reference photo here<br>(or click to choose)</div>
+      </div>
+      <div class="ctl">
+        <label>Overlay <input type="range" id="opacity" min="0" max="100" value="0"></label>
+        <label>Wipe <input type="range" id="wipe" min="0" max="100" value="100"></label>
+      </div>
+    </div>
+  </div>
+  <table id="tbl"></table>
+</div></div>
+
+<iframe id="app" src="index.html"></iframe>
+
+<script type="module">
+import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.180.0/three.module.min.js';
+
+/* real LEGO reference, in millimetres */
+const SPEC = { pitch: 8.0, plate: 3.2, brick: 9.6, studD: 4.8, studH: 1.8, clearance: 0.2 };
+const TOL  = { foot: 0.6, body: 0.4, studH: 0.45, studD: 0.6 };
+
+const frame = document.getElementById('app');
+let app = null, P = 0.008, PH = 0.0032;
+
+function ready() {
+  return new Promise((res, rej) => {
+    const t0 = Date.now();
+    const tick = () => {
+      const w = frame.contentWindow;
+      if (w && w.app && w.app.geos && w.app.geos.size) return res(w.app);
+      if (Date.now() - t0 > 25000) return rej(new Error('app did not boot'));
+      setTimeout(tick, 120);
+    };
+    tick();
+  });
+}
+
+// rebuild geometry in this page's THREE — the iframe has its own module instance
+function adopt(src) {
+  const g = new THREE.BufferGeometry();
+  for (const key of ['position', 'normal', 'color']) {
+    const a = src.attributes[key];
+    if (!a) continue;
+    let arr = Float32Array.from(a.array);
+    // COLOR_0 often arrives as normalised bytes/shorts; copying it raw blows out to white
+    if (key === 'color' && !(a.array instanceof Float32Array)) {
+      const max = a.array instanceof Uint8Array ? 255 : 65535;
+      for (let i = 0; i < arr.length; i++) arr[i] /= max;
+    }
+    g.setAttribute(key, new THREE.BufferAttribute(arr, a.itemSize));
+  }
+  if (src.index) g.setIndex(Array.from(src.index.array));
+  g.computeBoundingBox();
+  return g;
+}
+
+const mm = v => v / P * SPEC.pitch;          // world units -> millimetres
+
+function measure(geo, def) {
+  const pos = geo.attributes.position.array, n = geo.attributes.position.count;
+  const bb = geo.boundingBox;
+  const out = {
+    triangles: (geo.index ? geo.index.count : n) / 3,
+    x: mm(bb.max.x - bb.min.x), z: mm(bb.max.z - bb.min.z),
+    total: mm(bb.max.y - bb.min.y), studH: null, studD: null,
+  };
+  const bodyTopWorld = def.h * PH;
+  out.studH = out.total - def.h * SPEC.plate;
+  out.body = out.total - Math.max(0, out.studH);
+  // Stud diameter as the circumradius about the stud's own centre — measuring the
+  // x-extent instead reads a polygon chord and under-reports by the faceting.
+  if (out.studH > 0.4) {
+    const cx = (0.5 - def.w / 2) * P, cz = (0.5 - def.d / 2) * P;
+    const top = bb.max.y;
+    let r = 0, hits = 0;
+    for (let i = 0; i < n; i++) {
+      const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      if (y < top - 1e-6) continue;
+      const dx = x - cx, dz = z - cz;
+      if (Math.abs(dx) > P * 0.5 || Math.abs(dz) > P * 0.5) continue;
+      const d = Math.hypot(dx, dz);
+      if (d > r) r = d;
+      hits++;
+    }
+    if (hits > 2) { out.studD = mm(r * 2); out.studFacets = hits; }
+  }
+  return out;
+}
+
+// Only true LEGO elements are held to the part spec. For props and track the
+// DEFS w/d/h is a declared occupancy box the mesh sits inside, so a mismatch
+// there is information, not a defect — grading them red would be noise.
+const STRICT = new Set(['bricks', 'plates', 'special']);
+function grade(m, def) {
+  const f = [];
+  const strict = STRICT.has(def.cat);
+  const near = (a, b, t) => Math.abs(a - b) <= t;
+  const miss = strict ? 'bad' : 'warn';
+  const expX = def.w * SPEC.pitch, expZ = def.d * SPEC.pitch;
+  const fits = (got, exp) => got <= exp + TOL.foot;      // props need only fit their box
+  const okX = strict ? (near(m.x, expX, TOL.foot) || near(m.x, expX - SPEC.clearance, TOL.foot)) : fits(m.x, expX);
+  const okZ = strict ? (near(m.z, expZ, TOL.foot) || near(m.z, expZ - SPEC.clearance, TOL.foot)) : fits(m.z, expZ);
+  f.push(okX ? { k: 'ok', t: `X ${m.x.toFixed(2)}mm` } : { k: miss, t: `X ${m.x.toFixed(2)}${strict ? '≠' : '>'}${expX}` });
+  f.push(okZ ? { k: 'ok', t: `Z ${m.z.toFixed(2)}mm` } : { k: miss, t: `Z ${m.z.toFixed(2)}${strict ? '≠' : '>'}${expZ}` });
+  const expBody = def.h * SPEC.plate;
+  const okBody = strict ? near(m.body, expBody, TOL.body) : m.total <= expBody + 1.5;
+  f.push(okBody ? { k: 'ok', t: `h ${m.total.toFixed(2)}mm` }
+                : { k: miss, t: `h ${m.total.toFixed(2)}${strict ? '≠' : '>'}${expBody.toFixed(1)}` });
+  if (!strict) return f;
+  if (m.studH > 0.4) {
+    f.push(near(m.studH, SPEC.studH, TOL.studH)
+      ? { k: 'ok', t: `stud h ${m.studH.toFixed(2)}` } : { k: 'warn', t: `stud h ${m.studH.toFixed(2)}≠1.8` });
+    if (m.studD != null) f.push(near(m.studD, SPEC.studD, TOL.studD)
+      ? { k: 'ok', t: `stud ⌀ ${m.studD.toFixed(2)}` } : { k: 'warn', t: `stud ⌀ ${m.studD.toFixed(2)}≠4.8` });
+  } else f.push({ k: 'warn', t: 'no studs' });
+  // clearance is informational: the app builds full-pitch, real bricks are 0.2mm under
+  if (near(m.x, expX, 0.05)) f.push({ k: 'warn', t: 'no 0.2mm clearance' });
+  return f;
+}
+
+/* ---- renderers ---- */
+const thumbR = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+thumbR.setSize(260, 260); thumbR.setPixelRatio(2); thumbR.setClearColor(0x0d1014, 1);
+const thumbCam = new THREE.PerspectiveCamera(32, 1, 0.001, 12);
+
+function lights(s) {
+  s.add(new THREE.HemisphereLight(0xffffff, 0x424a55, 1.5));
+  const d = new THREE.DirectionalLight(0xffffff, 2.0);
+  d.position.set(1, 1.7, 1.1);
+  s.add(d);
+}
+function sceneFor(geo, colour) {
+  const s = new THREE.Scene();
+  lights(s);
+  const hasColour = !!geo.attributes.color;
+  const m = new THREE.MeshLambertMaterial(hasColour ? { vertexColors: true } : { color: colour });
+  const mesh = new THREE.Mesh(geo, m);
+  const bb = geo.boundingBox;
+  mesh.position.set(-(bb.max.x + bb.min.x) / 2, -bb.min.y, -(bb.max.z + bb.min.z) / 2);
+  const holder = new THREE.Group();
+  holder.add(mesh);
+  s.add(holder);
+  return { s, holder, size: Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z) };
+}
+function thumb(geo, colour) {
+  const { s, size } = sceneFor(geo, colour);
+  const d = size * 2.3 + 0.004;
+  thumbCam.position.set(d * 0.75, d * 0.68, d * 0.75);
+  thumbCam.lookAt(0, size * 0.42, 0);
+  thumbR.render(s, thumbCam);
+  return thumbR.domElement.toDataURL();
+}
+
+/* ---- boot ---- */
+const pieces = [];
+ready().then(a => {
+  app = a; P = a.P; PH = a.PH;
+  document.getElementById('boot').remove();
+  for (const [name, def] of Object.entries(a.DEFS)) {
+    const src = a.geos.get(name);
+    if (!src) continue;
+    const geo = adopt(src);
+    const m = measure(geo, def);
+    pieces.push({ name, def, geo, m, flags: grade(m, def), cat: def.cat || '?' });
+  }
+  pieces.sort((x, y) => x.cat.localeCompare(y.cat) || x.name.localeCompare(y.name));
+  buildBar();
+  render('all');
+}).catch(e => {
+  document.getElementById('boot').textContent = 'Could not read the app: ' + e.message +
+    ' — serve this folder over HTTP and make sure index.html loads.';
+});
+
+let filter = 'all';
+function buildBar() {
+  const bar = document.getElementById('bar');
+  const cats = ['all', ...new Set(pieces.map(p => p.cat))];
+  for (const c of cats) {
+    const b = document.createElement('button');
+    b.className = 'chip' + (c === 'all' ? ' on' : '');
+    b.textContent = c === 'all' ? `All (${pieces.length})` : `${c} (${pieces.filter(p => p.cat === c).length})`;
+    b.onclick = () => { filter = c; [...bar.children].forEach(n => n.classList.remove('on')); b.classList.add('on'); render(c); };
+    bar.appendChild(b);
+  }
+  const bad = pieces.filter(p => p.flags.some(f => f.k === 'bad')).length;
+  const warn = pieces.filter(p => !p.flags.some(f => f.k === 'bad') && p.flags.some(f => f.k === 'warn')).length;
+  const tot = document.createElement('div');
+  tot.className = 'tot';
+  tot.innerHTML = `<span><b>${pieces.length}</b> pieces</span>
+    <span style="color:var(--bad)"><b>${bad}</b> off-spec</span>
+    <span style="color:var(--warn)"><b>${warn}</b> notes</span>
+    <span style="color:var(--ok)"><b>${pieces.length - bad - warn}</b> clean</span>`;
+  bar.appendChild(tot);
+}
+function render(cat) {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  for (const p of pieces) {
+    if (cat !== 'all' && p.cat !== cat) continue;
+    const c = document.createElement('div');
+    c.className = 'card';
+    c.innerHTML = `<img><div class="nm">${p.name}</div>
+      <div class="mt">${p.def.w}×${p.def.d}×${p.def.h}p · ${p.m.triangles} tris</div>
+      <div class="flags">${p.flags.map(f => `<span class="f ${f.k}">${f.t}</span>`).join('')}</div>`;
+    c.querySelector('img').src = p.thumbUrl || (p.thumbUrl = thumb(p.geo, 0xb9c2cc));
+    c.onclick = () => openCompare(p);
+    grid.appendChild(c);
+  }
+}
+
+/* ---- compare panel ---- */
+const ovl = document.getElementById('ovl');
+const stage3d = document.getElementById('stage3d');
+let liveR = null, liveCam = null, live = null, spin = { th: 0.78, ph: 1.05, d: 1 }, drag = null;
+function ensureLive() {
+  if (liveR) return;
+  liveR = new THREE.WebGLRenderer({ antialias: true });
+  liveR.setPixelRatio(Math.min(devicePixelRatio, 2));
+  liveR.setClearColor(0x0d1014, 1);
+  liveCam = new THREE.PerspectiveCamera(32, 1, 0.0005, 20);
+  stage3d.appendChild(liveR.domElement);
+  const el = liveR.domElement;
+  el.style.touchAction = 'none';
+  el.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointermove', e => {
+    if (!drag) return;
+    spin.th -= (e.clientX - drag.x) * 0.01;
+    spin.ph = Math.min(3.0, Math.max(0.15, spin.ph - (e.clientY - drag.y) * 0.008));
+    drag = { x: e.clientX, y: e.clientY };
+    drawLive();
+  });
+  el.addEventListener('pointerup', () => drag = null);
+  el.addEventListener('wheel', e => { e.preventDefault(); spin.d *= 1 + e.deltaY * 0.0012; drawLive(); }, { passive: false });
+}
+function drawLive() {
+  if (!live) return;
+  const r = stage3d.getBoundingClientRect();
+  liveR.setSize(r.width, r.height, false);
+  liveCam.aspect = 1; liveCam.updateProjectionMatrix();
+  const d = live.size * 2.3 * spin.d + 0.004;
+  liveCam.position.set(d * Math.sin(spin.ph) * Math.sin(spin.th), d * Math.cos(spin.ph),
+                       d * Math.sin(spin.ph) * Math.cos(spin.th));
+  liveCam.lookAt(0, live.size * 0.42, 0);
+  liveR.render(live.s, liveCam);
+}
+function openCompare(p) {
+  ensureLive();
+  live = sceneFor(p.geo, 0xb9c2cc);
+  spin = { th: 0.78, ph: 1.05, d: 1 };
+  document.getElementById('cmpName').textContent = p.name;
+  document.getElementById('cmpSub').textContent =
+    `${p.cat} · declared ${p.def.w}×${p.def.d} studs, ${p.def.h} plates · ${p.m.triangles} triangles`;
+  const rows = [
+    ['Footprint X', p.m.x, p.def.w * SPEC.pitch, `${p.def.w} studs × 8.0`],
+    ['Footprint Z', p.m.z, p.def.d * SPEC.pitch, `${p.def.d} studs × 8.0`],
+    ['Body height', p.m.body, p.def.h * SPEC.plate, `${p.def.h} plates × 3.2`],
+    ['Stud height', p.m.studH, SPEC.studH, 'LEGO stud 1.8'],
+    ['Stud diameter', p.m.studD, SPEC.studD, 'LEGO stud ⌀ 4.8'],
+  ];
+  document.getElementById('tbl').innerHTML =
+    '<tr><th>Measurement</th><th>Measured (mm)</th><th>Spec (mm)</th><th>Δ</th><th>Basis</th></tr>' +
+    rows.map(([k, got, want, basis]) => {
+      if (got == null) return `<tr><td>${k}</td><td class="n">—</td><td class="n">${want}</td><td>—</td><td>${basis}</td></tr>`;
+      const d = got - want;
+      const col = Math.abs(d) < 0.35 ? 'var(--ok)' : Math.abs(d) < 0.9 ? 'var(--warn)' : 'var(--bad)';
+      return `<tr><td>${k}</td><td class="n">${got.toFixed(2)}</td><td class="n">${want.toFixed(2)}</td>
+        <td class="n" style="color:${col}">${d >= 0 ? '+' : ''}${d.toFixed(2)}</td><td>${basis}</td></tr>`;
+    }).join('');
+  ovl.classList.add('on');
+  requestAnimationFrame(drawLive);
+}
+document.getElementById('close').onclick = () => ovl.classList.remove('on');
+document.getElementById('reset').onclick = () => { spin = { th: 0.78, ph: 1.05, d: 1 }; drawLive(); };
+ovl.addEventListener('click', e => { if (e.target === ovl) ovl.classList.remove('on'); });
+
+/* reference image: drop, overlay, wipe */
+const drop = document.getElementById('drop'), refImg = document.getElementById('refImg');
+const useFile = f => {
+  if (!f || !f.type.startsWith('image/')) return;
+  refImg.src = URL.createObjectURL(f);
+  refImg.style.display = 'block';
+  drop.style.display = 'none';
+};
+drop.onclick = () => {
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = 'image/*';
+  i.onchange = () => useFile(i.files[0]);
+  i.click();
+};
+for (const ev of ['dragenter', 'dragover']) document.getElementById('stageRef')
+  .addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hot'); });
+document.getElementById('stageRef').addEventListener('dragleave', () => drop.classList.remove('hot'));
+document.getElementById('stageRef').addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('hot');
+  useFile(e.dataTransfer.files[0]);
+});
+// overlay slider floats the reference on top of the render; wipe clips it
+const opacity = document.getElementById('opacity'), wipe = document.getElementById('wipe');
+function applyOverlay() {
+  const o = +opacity.value / 100, w = +wipe.value;
+  let ghost = document.getElementById('ghost');
+  if (!ghost) {
+    ghost = document.createElement('img');
+    ghost.id = 'ghost';
+    ghost.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';
+    stage3d.appendChild(ghost);
+  }
+  ghost.src = refImg.src;
+  ghost.style.opacity = o;
+  ghost.style.clipPath = `inset(0 ${100 - w}% 0 0)`;
+}
+opacity.oninput = wipe.oninput = applyOverlay;
+refImg.addEventListener('load', applyOverlay);
+addEventListener('resize', drawLive);
+</script>
+</body>
+</html>
