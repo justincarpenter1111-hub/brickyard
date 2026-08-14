@@ -8504,6 +8504,13 @@ function bmOpening(g, glow, glass, face, wallAt, a, y, w, h, frameCol, lit) {
   if (lit && glow) {
     const lx = alongX ? a : wallAt + out * 0.62, lz = alongX ? wallAt + out * 0.62 : a;
     gbox(glow, alongX ? w + 0.6 : 0.3, h + 1, alongX ? 0.3 : w + 0.6, lx, y + h / 2, lz, 0xFFDf9E);
+    // sometimes, someone stands at the lit window — a dark shape in the warmth
+    if (Math.abs(Math.sin(a * 12.9898 + y * 78.233)) % 1 < 0.2) {
+      const sx2 = alongX ? a + (Math.sin(a * 3.7) * w) / 3 : wallAt + out * 0.7;
+      const sz2 = alongX ? wallAt + out * 0.7 : a + (Math.sin(a * 3.7) * w) / 3;
+      gbox(glow, alongX ? 1.6 : 0.25, h * 0.55, alongX ? 0.25 : 1.6, sx2, y + h * 0.32, sz2, 0x14100C);
+      gbox(glow, alongX ? 1.0 : 0.25, 2.4, alongX ? 0.25 : 1.0, sx2, y + h * 0.62 + 1, sz2, 0x14100C);
+    }
   }
 }
 
