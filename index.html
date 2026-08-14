@@ -8503,7 +8503,9 @@ function bmOpening(g, glow, glass, face, wallAt, a, y, w, h, frameCol, lit) {
   gbox(glass || g, alongX ? w : 0.3, h, alongX ? 0.3 : w, gx, y + h / 2, gz, 0xAFD3E4);   // the pane
   if (lit && glow) {
     const lx = alongX ? a : wallAt + out * 0.62, lz = alongX ? wallAt + out * 0.62 : a;
-    gbox(glow, alongX ? w + 0.6 : 0.3, h + 1, alongX ? 0.3 : w + 0.6, lx, y + h / 2, lz, 0xFFDf9E);
+    // a whole shopfront at full blaze flattens the facade — big panes glow softer
+    gbox(glow, alongX ? w + 0.6 : 0.3, h + 1, alongX ? 0.3 : w + 0.6, lx, y + h / 2, lz,
+         w > 8 ? 0xC49E6C : 0xFFDf9E);
     // sometimes, someone stands at the lit window — a dark shape in the warmth
     if (Math.abs(Math.sin(a * 12.9898 + y * 78.233)) % 1 < 0.2) {
       const sx2 = alongX ? a + (Math.sin(a * 3.7) * w) / 3 : wallAt + out * 0.7;
@@ -9192,6 +9194,34 @@ function bmPickVeh(mix, r) {
 const bmVehGlassMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true,
                                                       opacity: 0.42, depthWrite: false });
 const bmVehInst = new Map();     // type -> { body: InstancedMesh, glass: InstancedMesh }
+/* headlight pools: an additive gradient quad thrown on the road ahead of every
+   vehicle after dark — the single cheapest thing that sells night driving */
+let bmHeadInst = null, bmFlashRed = null, bmFlashBlue = null;
+function bmInitNightLights() {
+  if (bmHeadInst) return;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const c = cv.getContext('2d');
+  const grad = c.createRadialGradient(32, 20, 3, 32, 26, 30);
+  grad.addColorStop(0, 'rgba(255,225,170,0.85)');
+  grad.addColorStop(0.5, 'rgba(255,215,150,0.30)');
+  grad.addColorStop(1, 'rgba(255,210,140,0)');
+  c.fillStyle = grad; c.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(cv);
+  const geo = new THREE.PlaneGeometry(13 * P, 20 * P).rotateX(-Math.PI / 2);
+  bmHeadInst = new THREE.InstancedMesh(geo,
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false,
+                                  blending: THREE.AdditiveBlending }), BM_CAR_MAX + 2);
+  bmHeadInst.frustumCulled = false;
+  bmHeadInst.count = 0;
+  beastRoot.add(bmHeadInst);
+  const lampGeo = new THREE.BoxGeometry(1.7 * P, 1.8 * PH, 1.5 * P);
+  bmFlashRed = new THREE.InstancedMesh(lampGeo, new THREE.MeshBasicMaterial({ color: 0xFF4030 }), 8);
+  bmFlashBlue = new THREE.InstancedMesh(lampGeo, new THREE.MeshBasicMaterial({ color: 0x3C7CFF }), 8);
+  bmFlashRed.frustumCulled = bmFlashBlue.frustumCulled = false;
+  bmFlashRed.count = bmFlashBlue.count = 0;
+  beastRoot.add(bmFlashRed, bmFlashBlue);
+}
 function bmInitCarMeshes() {
   if (bmVehInst.size) return;
   for (const [t, spec] of Object.entries(BM_VEHICLES)) {
@@ -9505,6 +9535,41 @@ function bmStepTraffic(dt) {
     inst.body.instanceMatrix.needsUpdate = true;
     inst.glass.instanceMatrix.needsUpdate = true;
   }
+  // night dressing: headlight pools on the tarmac, and the police strobe
+  let hn = 0, fr = 0, fb = 0;
+  if (bmHeadInst && bmNightF > 0.25) {
+    const lay = (x, z, yaw) => {
+      if (hn >= BM_CAR_MAX + 2) return;
+      const fx = Math.sin(yaw), fz = Math.cos(yaw);
+      _bmO.position.set((x + fx * 16) * P, (BM_ROAD_TOP + 0.5) * PH, (z + fz * 16) * P);
+      _bmO.rotation.set(0, yaw, 0);
+      _bmO.scale.set(1, 1, 1);
+      _bmO.updateMatrix();
+      bmHeadInst.setMatrixAt(hn++, _bmO.matrix);
+    };
+    for (const car of bmCars) lay(car.x, car.z, car.yaw);
+    if (bmDrive) lay(bmDrive.x, bmDrive.z, bmDrive.yaw);
+    const strobe = ((bmClock * 4) | 0) % 2;
+    for (const car of bmCars) {
+      if (car.t !== 'police') continue;
+      const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
+      const off = strobe ? 0.85 : -0.85;
+      const inst = strobe ? bmFlashBlue : bmFlashRed;
+      _bmO.position.set((car.x + fz * off - fx * 1.2) * P, (BM_ROAD_TOP + 17.3) * PH,
+                        (car.z - fx * off - fz * 1.2) * P);
+      _bmO.rotation.set(0, car.yaw, 0);
+      _bmO.scale.set(1, 1, 1);
+      _bmO.updateMatrix();
+      inst.setMatrixAt(strobe ? fb++ : fr++, _bmO.matrix);
+    }
+  }
+  if (bmHeadInst) {
+    bmHeadInst.count = hn;
+    bmHeadInst.instanceMatrix.needsUpdate = true;
+    bmFlashRed.count = fr; bmFlashBlue.count = fb;
+    bmFlashRed.instanceMatrix.needsUpdate = true;
+    bmFlashBlue.instanceMatrix.needsUpdate = true;
+  }
 }
 
 /* ---------- traffic lights (the working heads) ----------
@@ -9671,10 +9736,13 @@ function bmSpawnPed() {
     camera.getWorldDirection(cf);
     if (dist < 190 && (x * P - camera.position.x) * cf.x + (z * P - camera.position.z) * cf.z > 0) continue;
     const fig2 = buildFigure(bmRandomAvatar());
+    const kid = Math.random() < 0.25;                 // a few short-legged citizens
+    if (kid) fig2.scale.setScalar(0.72);
     fig2.visible = true;
     beastRoot.add(fig2);
     bmPeds.push({ fig: fig2, x, z, d, latT: lat, state: 'walk', t: 0, decided: null,
-                  v: PED_V * (0.8 + Math.random() * 0.4), phase: Math.random() * 6, yaw: 0 });
+                  v: PED_V * (kid ? 1.05 : 0.8 + Math.random() * 0.4),
+                  phase: Math.random() * 6, yaw: 0 });
     return;
   }
 }
@@ -10046,6 +10114,15 @@ function bmSetCam(i) {
   toast(c.name + ' camera');
 }
 function bmStepWalk(dt) {
+  // wedged inside a solid (a tree that grew over the spawn, a parked car)?
+  // nudge out sideways rather than trapping the player forever
+  if (bmBlocked(play.x, play.z, play.y)) {
+    for (const [ox, oz] of [[1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5], [3, 0], [-3, 0], [0, 3], [0, -3]]) {
+      if (!bmBlocked(play.x + ox * P, play.z + oz * P, play.y)) {
+        play.x += ox * P; play.z += oz * P; break;
+      }
+    }
+  }
   let ix = stickV.x, iz = stickV.y;
   if (keys.w || keys.ArrowUp) iz -= 1;
   if (keys.s || keys.ArrowDown) iz += 1;
@@ -10196,7 +10273,7 @@ function setBeastMode(on) {
     sun.shadow.mapSize.set(2048, 2048);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
     for (const l of lampPool) { l.visible = false; l.distance = 0.22; }
-    Object.assign(play, { x: 19 * P, z: 45 * P, y: BM_PATH_TOP * PH, vy: 0, yaw: Math.PI,
+    Object.assign(play, { x: 21 * P, z: 52 * P, y: BM_PATH_TOP * PH, vy: 0, yaw: Math.PI,
                           phase: 0, grounded: true, swimming: false });
     Object.assign(chase, { theta: Math.PI, phi: Math.PI / 2, dist: 0 });
     bmClock = BM.DAY_LEN * 0.40;                 // late morning light
@@ -10208,6 +10285,7 @@ function setBeastMode(on) {
     if (!fig) refreshFig();
     if (fig) fig.visible = false;
     bmInitCarMeshes();
+    bmInitNightLights();
     bmInitAmbient();
     bmBuildSignAtlas();
     bmStreamChunks(99);
@@ -10230,6 +10308,7 @@ function setBeastMode(on) {
     for (const inst of bmVehInst.values()) inst.body.count = inst.glass.count = 0;
     bmRedInst.count = bmGrnInst.count = 0;
     while (bmPeds.length) bmDropPed(0);
+    if (bmHeadInst) { bmHeadInst.count = 0; bmFlashRed.count = 0; bmFlashBlue.count = 0; }
     if (bmBirdUp) { bmBirdUp.count = bmBirdDn.count = 0; }
     if (bmCloudInst) bmCloudInst.count = 0;
     if (bmPlane) bmPlane.visible = false;
