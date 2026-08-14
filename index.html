@@ -8809,15 +8809,49 @@ function bmGenChunk(i, j) {
     solids.push([pxp - 0.8, pxp + 0.8, pzp - 0.8, pzp + 0.8, 39, 0]);
   }
 
-  /* street lights on the chunk's own footpaths */
-  for (const bs of baySides) {
+  /* bus stops: a shelter mid-block on some street sides; buses dwell here */
+  chunk.stops = [];
+  const shelterSides = baySides.map(() => R() < 0.4);
+  for (let bi = 0; bi < baySides.length; bi++) {
+    if (!shelterSides[bi]) continue;
+    const bs = baySides[bi];
+    const along = (bs.alongZ ? z0 : x0) + 56;
+    const latC = bs.line + bs.side * 19;
+    const sx2 = bs.alongZ ? latC : along, sz2 = bs.alongZ ? along : latC;
+    const A = (dxa, dza, w, h, dep, la, ya, col) => {      // shelter part helper
+      const px2 = bs.alongZ ? bs.line + bs.side * la : along + dxa;
+      const pz2 = bs.alongZ ? along + dxa : bs.line + bs.side * la;
+      gbox(g, bs.alongZ ? dep : w, h, bs.alongZ ? w : dep, px2, ya, pz2, col);
+    };
+    A(0, 0, 10, 12, 0.8, 22, 10, 0x646464);               // back wall
+    A(0, 0, 11, 1.4, 5.5, 19, 17, 0xF4F4F4);              // roof
+    A(-4.5, 0, 0.8, 12, 0.8, 15.5, 10, 0x646464);         // posts
+    A(4.5, 0, 0.8, 12, 0.8, 15.5, 10, 0x646464);
+    A(0, 0, 5, 2, 1.6, 21, 6.5, 0xB40000);                // bench
+    A(6.8, 0, 0.7, 18, 0.7, 15.5, 13, 0x1B2A34);          // sign pole
+    A(6.8, 0, 2.4, 3, 0.5, 15.5, 23.5, 0xFAC80A);         // yellow flag
+    const wallLat = bs.line + bs.side * 22;
+    if (bs.alongZ) chunk.solids.push([wallLat - 0.6, wallLat + 0.6, along - 5, along + 5, 14, 0]);
+    else chunk.solids.push([along - 5, along + 5, wallLat - 0.6, wallLat + 0.6, 14, 0]);
+    // where the bus itself halts: on its own lane, level with the shelter
+    const d = [0, 2, 3, 1][bi];
+    const [rxs, rzs] = bmRightOf(d);
+    chunk.stops.push({ key: i + ',' + j + ',' + bi, d,
+                       lx: bs.alongZ ? bs.line + rxs * BM.LANE : along,
+                       lz: bs.alongZ ? along : bs.line + rzs * BM.LANE });
+  }
+
+  /* street lights on the chunk's own footpaths (a shelter replaces its lamp) */
+  for (let bi = 0; bi < baySides.length; bi++) {
+    const bs = baySides[bi];
     const lat = bs.line + bs.side * 16.5;
     for (const along0 of [30, 56, 82]) {
+      if (along0 === 56 && shelterSides[bi]) continue;
       const along = (bs.alongZ ? z0 : x0) + along0;
       const lxp = bs.alongZ ? lat : along, lzp = bs.alongZ ? along : lat;
       bmProp(chunk, 'prop_lamppost', lxp, lzp, 0, BM_PATH_TOP);
       solids.push([lxp - 0.7, lxp + 0.7, lzp - 0.7, lzp + 0.7, BM_PATH_TOP + 12, 0]);
-      gbox(glow, 1.6, 1.6, 1.6, lxp, BM_PATH_TOP + 11.4, lzp, 0xFFD39A);
+      gbox(glow, 1.4, 1.4, 1.4, lxp, BM_PATH_TOP + 11.4, lzp, 0xFFD39A);
     }
   }
 
@@ -9395,6 +9429,21 @@ function bmStepTraffic(dt) {
       const room = clear - 3.5;
       want = room <= 0 ? 0 : Math.min(want, Math.sqrt(Math.max(0, 2 * CAR_BRK * room)) * 0.7);
     }
+    // buses call at the shelters on their side of the street
+    if (car.t === 'bus') {
+      if (car.dwell > 0) { car.dwell -= dt; want = 0; }
+      else for (const ch of bmChunks.values()) {
+        if (!ch.stops) continue;
+        for (const st of ch.stops) {
+          if (st.d !== car.d || st.key === car.lastStop) continue;
+          const a = (st.lx - car.x) * dx + (st.lz - car.z) * dz;
+          const lat = Math.abs((st.lx - car.x) * dz - (st.lz - car.z) * dx);
+          if (lat > 2 || a < -2 || a > 45) continue;
+          if (a < 1.5 && car.v < 1.5) { car.dwell = 2.5 + Math.random() * 2; car.lastStop = st.key; }
+          else want = Math.min(want, Math.sqrt(2 * CAR_BRK * Math.max(0, a - 0.6)));
+        }
+      }
+    }
     car.dbgWant = want; car.dbgClear = clear; car.dbgS = s;
     // count time spent parked at the line on a green — the anti-starvation clock
     if (green && car.v < 1 && s > car.stopS - 3 && s < car.stopS + 8)
@@ -9683,6 +9732,19 @@ function bmStepPeds(dt) {
       if (p.state !== 'idle' && p.state !== 'waitCross') {
         // ease onto the target lateral line while walking ahead
         lat += (p.latT - lat) * Math.min(1, dt * 4.5);
+        // sidestep bus shelters — the only furniture inside the walking band
+        for (const ch of bmChunks.values()) {
+          if (!ch.stops || !ch.stops.length) continue;
+          for (const st of ch.stops) {
+            const shLine = Math.round((alongZ ? st.lx : st.lz) / BM.PITCH) * BM.PITCH;
+            if (shLine !== line) continue;
+            const sideSign = Math.sign(alongZ ? st.lx - shLine : st.lz - shLine);
+            if (Math.sign(lat) !== sideSign) continue;
+            const shAlong = alongZ ? st.lz : st.lx;
+            if (Math.abs(along - shAlong) < 9 && Math.abs(lat) > 17.5)
+              lat += (17 * sideSign - lat) * Math.min(1, dt * 6);
+          }
+        }
         let adv = p.v * dt;
         if (p.state === 'cross') {
           const fwdS = (p.d === 0 || p.d === 1) ? 1 : -1;
