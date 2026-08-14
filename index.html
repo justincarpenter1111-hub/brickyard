@@ -9115,7 +9115,7 @@ function bmSolidPoint(x, z, y) {          // camera pull-in: is this point insid
 const BM_DIRS = [[0, 1], [1, 0], [0, -1], [-1, 0]];        // +z, +x, -z, -x
 function bmRightOf(d) { const [dx, dz] = BM_DIRS[d]; return [dz, -dx]; }
 const bmCars = [];
-const BM_CAR_MAX = 34, BM_CAR_TARGET = 22;
+const BM_CAR_MAX = 72, BM_CAR_TARGET = 22;   // pool must hold parked + traffic + driven
 const CAR_V = 30, CAR_TURN_V = 12, CAR_ACC = 26, CAR_BRK = 55;   // studs/s
 const BM_GLASS_C = 0x9DC3D4;
 
@@ -9572,10 +9572,12 @@ function bmStepTraffic(dt) {
     inst.glass.setMatrixAt(k, _bmO.matrix);
     counts.set(t, k + 1);
   };
+  // the player's own car draws FIRST — when a pool ever fills, the car you are
+  // sitting in must never be the one that vanishes (that bug shipped once)
+  if (bmDrive) put(bmDrive.t, bmDrive.x, bmDrive.z, play.y / PH, bmDrive.yaw);
   for (const car of bmCars) put(car.t, car.x, car.z, BM_ROAD_TOP, car.yaw);
   for (const c of bmChunks.values())
     if (c.parked) for (const p of c.parked) put(p.t, p.x, p.z, p.y, p.yaw);
-  if (bmDrive) put(bmDrive.t, bmDrive.x, bmDrive.z, play.y / PH, bmDrive.yaw);
   for (const [t, inst] of bmVehInst) {
     inst.body.count = inst.glass.count = counts.get(t);
     inst.body.instanceMatrix.needsUpdate = true;
