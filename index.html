@@ -8577,6 +8577,21 @@ function bmGenChunk(i, j) {
     }
   }
 
+  /* traffic lights at this chunk's south-west intersection: a pole on the
+     near-side right corner of every approach, head facing the incoming lane */
+  chunk.lights = [];
+  for (const d of [0, 1, 2, 3]) {
+    const [fx, fz] = BM_DIRS[d], [rx, rz] = bmRightOf(d);
+    const pxp = x0 - 15.5 * fx + 15.5 * rx, pzp = z0 - 15.5 * fz + 15.5 * rz;
+    gbox(g, 0.9, 26, 0.9, pxp, 17, pzp, 0x1B2A34);                    // the pole
+    const alongX = fx !== 0;
+    gbox(g, alongX ? 2.0 : 2.4, 9, alongX ? 2.4 : 2.0, pxp, 34.5, pzp, 0x1B2A34);   // the head
+    for (const [ly] of [[31.8], [34.5], [37.2]])                      // dark lamp wells
+      gbox(g, alongX ? 0.3 : 1.5, 1.5, alongX ? 1.5 : 0.3, pxp - fx * 1.15, ly, pzp - fz * 1.15, 0x0d1318);
+    chunk.lights.push({ x: pxp - fx * 1.35, z: pzp - fz * 1.35, fx: -fx, fz: -fz, ns: fz !== 0 });
+    solids.push([pxp - 0.8, pxp + 0.8, pzp - 0.8, pzp + 0.8, 39, 0]);
+  }
+
   /* street lights on the chunk's own footpaths */
   for (const bs of baySides) {
     const lat = bs.line + bs.side * 16.5;
@@ -8648,6 +8663,7 @@ function bmGenChunk(i, j) {
   }
   bmChunks.set(i + ',' + j, chunk);
   bmPropsDirty = true;
+  bmLightsDirty = true;
   return chunk;
 }
 
@@ -8658,6 +8674,7 @@ function bmDropChunk(key) {
   if (c.glowMesh) { beastRoot.remove(c.glowMesh); c.glowMesh.geometry.dispose(); }
   bmChunks.delete(key);
   bmPropsDirty = true;
+  bmLightsDirty = true;
 }
 
 let bmQueue = [];
@@ -8737,6 +8754,14 @@ function bmBlocked(x, z, feetY, climb = CLIMB, r = FIG_R) {
       if (top > feetY + climb + 1e-5 && bot < feetY + FIG_H - 0.002) return true;
     }
   }
+  // moving traffic is solid too — you bump off a car, you don't ghost through it
+  if (feetY < 19 * PH) for (const c of bmCars) {
+    const ddx = sx - c.x, ddz = sz - c.z;
+    if (ddx * ddx + ddz * ddz > 400) continue;
+    const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
+    const a = ddx * fx + ddz * fz, lat = ddx * fz - ddz * fx;
+    if (Math.abs(a) < 8.2 + sr && Math.abs(lat) < 3.6 + sr) return true;
+  }
   return false;
 }
 function bmGroundAt(x, z, feetY, climb = CLIMB) {
@@ -8756,6 +8781,269 @@ function bmSolidPoint(x, z, y) {          // camera pull-in: is this point insid
   for (const s of bmSolidsNear(sx, sz, 0.5))
     if (sx > s[0] && sx < s[1] && sz > s[2] && sz < s[3] && y < s[4] * PH && y > s[5] * PH) return true;
   return false;
+}
+
+/* ---------- traffic ----------
+   Cars live on the lane grid: lane centres sit 4 studs to the right of each
+   street line (right-hand traffic), so a car's position is always exactly on
+   a lane except while it sweeps a turn arc through an intersection. Lights
+   run on one global cycle; cars queue on each other, stop at the stop line,
+   and only ever appear or vanish outside the fog.                          */
+const BM_DIRS = [[0, 1], [1, 0], [0, -1], [-1, 0]];        // +z, +x, -z, -x
+function bmRightOf(d) { const [dx, dz] = BM_DIRS[d]; return [dz, -dx]; }
+const bmCars = [];
+const BM_CAR_TYPES = ['prop_car_red', 'prop_car_blue', 'prop_car_yellow', 'prop_car_black'];
+const BM_CAR_MAX = 30, BM_CAR_TARGET = 22;
+const CAR_V = 30, CAR_TURN_V = 12, CAR_ACC = 26, CAR_BRK = 55;   // studs/s
+const STOP_S = 23;                                          // car centre at the stop line
+const bmCarInst = new Map();                                // type -> InstancedMesh
+function bmInitCarMeshes() {
+  if (bmCarInst.size) return;
+  for (const t of BM_CAR_TYPES) {
+    const m = new THREE.InstancedMesh(geos.get(t), propMat, BM_CAR_MAX);
+    m.castShadow = m.receiveShadow = true;
+    m.frustumCulled = false;
+    m.count = 0;
+    beastRoot.add(m);
+    bmCarInst.set(t, m);
+  }
+}
+/* the light cycle: 16 s — NS green, all red, EW green, all red */
+function bmSignal() {
+  const c = bmClock % 16;
+  return { ns: c < 7, ew: c >= 8 && c < 15 };
+}
+function bmLaneOf(car) {                     // the street line this car's lane hugs
+  const [dx] = BM_DIRS[car.d];
+  return dx === 0 ? Math.round((car.x - bmRightOf(car.d)[0] * BM.LANE) / BM.PITCH) * BM.PITCH
+                  : Math.round((car.z - bmRightOf(car.d)[1] * BM.LANE) / BM.PITCH) * BM.PITCH;
+}
+function bmNextCross(car) {                  // centre of the next intersection ahead
+  const [dx, dz] = BM_DIRS[car.d];
+  const along = dx === 0 ? car.z : car.x;
+  const fwd = dx === 0 ? dz : dx;
+  const L = fwd > 0 ? (Math.floor((along + 8.01) / BM.PITCH) + 1) * BM.PITCH
+                    : (Math.ceil((along - 8.01) / BM.PITCH) - 1) * BM.PITCH;
+  return L;
+}
+function bmSpawnCar() {
+  if (bmCars.length >= BM_CAR_TARGET) return;
+  const px = play.x / P, pz = play.z / P;
+  for (let tries = 0; tries < 12; tries++) {
+    const d = (Math.random() * 4) | 0;
+    const [dx, dz] = BM_DIRS[d], [rx, rz] = bmRightOf(d);
+    // a street line near the player, on the axis this direction drives
+    const base = dx === 0 ? Math.round(px / BM.PITCH) : Math.round(pz / BM.PITCH);
+    const line = (base + ((Math.random() * 5) | 0) - 2) * BM.PITCH;
+    const alongC = dx === 0 ? pz : px;
+    const along = alongC + (Math.random() < 0.5 ? -1 : 1) * (150 + Math.random() * 120);
+    const x = dx === 0 ? line + rx * BM.LANE : along;
+    const z = dx === 0 ? along : line + rz * BM.LANE;
+    const dist = Math.hypot(x - px, z - pz);
+    if (dist < 140 || dist > 300) continue;
+    // never appear on camera: either beyond the fog or behind the view
+    const cf = new THREE.Vector3();
+    camera.getWorldDirection(cf);
+    const dot = (x * P - camera.position.x) * cf.x + (z * P - camera.position.z) * cf.z;
+    if (dist < 210 && dot > 0) continue;
+    let tooClose = false;
+    for (const c of bmCars)
+      if (Math.hypot(c.x - x, c.z - z) < 24) { tooClose = true; break; }
+    if (tooClose) continue;
+    bmCars.push({ t: BM_CAR_TYPES[(Math.random() * 4) | 0], x, z, d, v: CAR_V * (0.75 + Math.random() * 0.25),
+                  max: CAR_V * (0.8 + Math.random() * 0.25), act: 'cruise',
+                  decided: null, turn: 0, arc: null, yaw: Math.atan2(dx, dz) });
+    return;
+  }
+}
+function bmAheadGap(car) {                   // distance to whatever is queued ahead of us
+  const [dx, dz] = BM_DIRS[car.d];
+  let gap = 999;
+  for (const o of bmCars) {
+    if (o === car) continue;
+    const a = (o.x - car.x) * dx + (o.z - car.z) * dz;                 // ahead of us?
+    const lat = Math.abs((o.x - car.x) * dz - (o.z - car.z) * dx);     // and on our lane?
+    if (a > 0 && a < gap && lat < 5) gap = a;
+  }
+  // the player on foot is an obstacle too — never drive through them
+  const pa = (play.x / P - car.x) * dx + (play.z / P - car.z) * dz;
+  const pl = Math.abs((play.x / P - car.x) * dz - (play.z / P - car.z) * dx);
+  if (pa > 0 && pa < gap && pl < 5) gap = pa;
+  return gap;
+}
+function bmStepTraffic(dt) {
+  const sig = bmSignal();
+  // spawn up to target, one per frame; drop what's far outside the fog
+  bmSpawnCar();
+  const px = play.x / P, pz = play.z / P;
+  for (let k = bmCars.length - 1; k >= 0; k--) {
+    const c = bmCars[k];
+    if (Math.hypot(c.x - px, c.z - pz) > 330) bmCars.splice(k, 1);
+  }
+  for (const car of bmCars) {
+    if (car.act === 'arc') {
+      const A = car.arc;
+      // even mid-turn, never sweep into a car or the player standing ahead
+      let blockedAhead = false;
+      const hx0 = Math.sin(car.yaw), hz0 = Math.cos(car.yaw);
+      for (const o of bmCars) {
+        if (o === car) continue;
+        const ddx = o.x - car.x, ddz = o.z - car.z;
+        const dd = Math.hypot(ddx, ddz);
+        if (dd < 17 && (ddx * hx0 + ddz * hz0) / (dd || 1) > 0.55) { blockedAhead = true; break; }
+      }
+      {
+        const ddx = play.x / P - car.x, ddz = play.z / P - car.z;
+        const dd = Math.hypot(ddx, ddz);
+        if (dd < 15 && (ddx * hx0 + ddz * hz0) / (dd || 1) > 0.55) blockedAhead = true;
+      }
+      car.v = blockedAhead ? Math.max(0, car.v - CAR_BRK * dt)
+                           : Math.min(CAR_TURN_V, car.v + CAR_ACC * dt);
+      A.a += car.v * dt / A.r;
+      if (A.a >= Math.PI / 2) {              // out of the turn, snapped onto the new lane
+        car.d = A.toDir;
+        const [dx, dz] = BM_DIRS[car.d];
+        car.x = A.exitX; car.z = A.exitZ;
+        car.yaw = Math.atan2(dx, dz);
+        car.act = 'cruise'; car.arc = null; car.decided = null; car.turn = 0;
+        continue;
+      }
+      const ca = Math.cos(A.a), sa = Math.sin(A.a);
+      let ox, oz, hx, hz;
+      if (A.left) {
+        ox = A.rvx * A.r * ca + A.fx * A.r * sa;
+        oz = A.rvz * A.r * ca + A.fz * A.r * sa;
+        hx = -A.rvx * sa + A.fx * ca; hz = -A.rvz * sa + A.fz * ca;
+      } else {
+        ox = -A.rvx * A.r * ca + A.fx * A.r * sa;
+        oz = -A.rvz * A.r * ca + A.fz * A.r * sa;
+        hx = A.rvx * sa + A.fx * ca; hz = A.rvz * sa + A.fz * ca;
+      }
+      car.x = A.cx + ox; car.z = A.cz + oz;
+      car.yaw = Math.atan2(hx, hz);
+      continue;
+    }
+    const [dx, dz] = BM_DIRS[car.d], [rx, rz] = bmRightOf(car.d);
+    const L = bmNextCross(car);
+    // intersection centre: the cross line ahead, on our own street line
+    const line = bmLaneOf(car);
+    const ix = dx === 0 ? line : L, iz = dx === 0 ? L : line;
+    const s = (ix - car.x) * dx + (iz - car.z) * dz;      // distance to the centre
+    const key = ix + ',' + iz;
+    if (car.decided !== key && s < 45) {
+      car.decided = key;
+      const r = Math.random();
+      car.turn = r < 0.55 ? 0 : r < 0.8 ? 1 : 2;          // straight / right / left
+    }
+    const green = (dz !== 0) ? sig.ns : sig.ew;
+    // the tail of a green works as amber: never commit to the box on a light
+    // about to flip, or you meet the cross traffic halfway through it
+    const cyc = bmClock % 16;
+    const remaining = (dz !== 0) ? (cyc < 7 ? 7 - cyc : 0) : (cyc >= 8 && cyc < 15 ? 15 - cyc : 0);
+    const amber = green && remaining < 1.6;
+    let want = car.max;
+    // red light (or a left turn waiting its gap): stop with the nose at the line
+    let holdAt = null;
+    if (s > 0 && s < 60 && (!green || (amber && s > 12)) && s > STOP_S - 6) holdAt = STOP_S;
+    if (car.decided === key && car.turn === 2 && green && s > 0 && s <= STOP_S + 4) {
+      // left turns give way to oncoming traffic
+      for (const o of bmCars) {
+        if (o === car || o.d !== (car.d + 2) % 4) continue;
+        const os = (ix - o.x) * BM_DIRS[o.d][0] + (iz - o.z) * BM_DIRS[o.d][1];
+        if (os > -10 && os < 55 && o.v > 3) { holdAt = STOP_S; break; }
+      }
+    }
+    if (holdAt != null && s > holdAt - 1) {
+      const room = s - holdAt;
+      want = room < 2 ? 0 : Math.min(want, Math.sqrt(Math.max(0, 2 * CAR_BRK * (room - 1))));
+    } else if (car.turn && s > 8) {
+      const room = s - 8;
+      want = Math.min(want, Math.max(CAR_TURN_V, Math.sqrt(CAR_TURN_V * CAR_TURN_V + 2 * CAR_BRK * room)));
+    }
+    // whatever is queued ahead
+    const gap = bmAheadGap(car);
+    if (gap < 40) {
+      const room = gap - 17;
+      want = room <= 0 ? 0 : Math.min(want, Math.sqrt(Math.max(0, 2 * CAR_BRK * room)) * 0.7);
+    }
+    if (car.v < want) car.v = Math.min(want, car.v + CAR_ACC * dt);
+    else car.v = Math.max(want, car.v - CAR_BRK * dt);
+    // move
+    car.x += dx * car.v * dt; car.z += dz * car.v * dt;
+    car.yaw = Math.atan2(dx, dz);
+    // arrive at the arc mouth 8 studs before the centre? begin the sweep
+    const s2 = (ix - car.x) * dx + (iz - car.z) * dz;
+    if (car.turn && car.decided === key && s2 <= 8 && s2 > -20 && car.act === 'cruise') {
+      const left = car.turn === 2;
+      const r = left ? 12 : 4;
+      const toDir = left ? (car.d + 3) % 4 : (car.d + 1) % 4;
+      const cx = left ? ix - 8 * dx - 8 * rx : ix - 8 * dx + 8 * rx;
+      const cz = left ? iz - 8 * dz - 8 * rz : iz - 8 * dz + 8 * rz;
+      const exitX = left ? ix + 4 * dx - 8 * rx : ix - 4 * dx + 8 * rx;
+      const exitZ = left ? iz + 4 * dz - 8 * rz : iz - 4 * dz + 8 * rz;
+      // place the car exactly at the arc mouth so the sweep starts clean
+      car.x = ix - 8 * dx + 4 * rx; car.z = iz - 8 * dz + 4 * rz;
+      car.act = 'arc';
+      car.arc = { a: 0, r, left, cx, cz, exitX, exitZ, toDir,
+                  fx: dx, fz: dz, rvx: rx, rvz: rz };
+    }
+    if (s2 < -8) car.decided = null;         // through and clear: free to decide again
+  }
+  // draw
+  const counts = new Map();
+  for (const t of BM_CAR_TYPES) counts.set(t, 0);
+  for (const car of bmCars) {
+    const m = bmCarInst.get(car.t);
+    const k = counts.get(car.t);
+    if (k >= BM_CAR_MAX) continue;
+    _bmO.position.set(car.x * P, BM_ROAD_TOP * PH, car.z * P);
+    _bmO.rotation.set(0, car.yaw, 0);
+    _bmO.scale.set(1, 1, 1);
+    _bmO.updateMatrix();
+    m.setMatrixAt(k, _bmO.matrix);
+    counts.set(car.t, k + 1);
+  }
+  for (const t of BM_CAR_TYPES) {
+    const m = bmCarInst.get(t);
+    m.count = counts.get(t);
+    m.instanceMatrix.needsUpdate = true;
+  }
+}
+
+/* ---------- traffic lights (the working heads) ----------
+   The poles are baked into each chunk; the lit lamps are two instanced
+   meshes — one red, one green — rebuilt whenever the signal flips.        */
+const bmLampGeoR = new THREE.BoxGeometry(1.4 * P, 1.4 * PH, 0.5 * P);
+const bmRedInst = new THREE.InstancedMesh(bmLampGeoR, new THREE.MeshBasicMaterial({ color: 0xff5040 }), 256);
+const bmGrnInst = new THREE.InstancedMesh(bmLampGeoR, new THREE.MeshBasicMaterial({ color: 0x40e070 }), 256);
+bmRedInst.frustumCulled = bmGrnInst.frustumCulled = false;
+bmRedInst.count = bmGrnInst.count = 0;
+beastRoot.add(bmRedInst, bmGrnInst);
+let bmLastSig = '';
+let bmLightsDirty = true;
+function bmSyncLights() {
+  const sig = bmSignal();
+  const sigKey = (sig.ns ? 'N' : '') + (sig.ew ? 'E' : '');
+  if (!bmLightsDirty && sigKey === bmLastSig) return;
+  bmLastSig = sigKey; bmLightsDirty = false;
+  let nr = 0, ng = 0;
+  for (const c of bmChunks.values()) {
+    if (!c.lights) continue;
+    for (const l of c.lights) {
+      const green = l.ns ? sig.ns : sig.ew;
+      const inst = green ? bmGrnInst : bmRedInst;
+      const n = green ? ng++ : nr++;
+      if (n >= 256) continue;
+      _bmO.position.set(l.x * P, (green ? 31.8 : 37.2) * PH, l.z * P);
+      _bmO.rotation.set(0, Math.atan2(l.fx, l.fz), 0);
+      _bmO.scale.set(1, 1, 1);
+      _bmO.updateMatrix();
+      inst.setMatrixAt(n, _bmO.matrix);
+    }
+  }
+  bmRedInst.count = nr; bmGrnInst.count = ng;
+  bmRedInst.instanceMatrix.needsUpdate = true;
+  bmGrnInst.instanceMatrix.needsUpdate = true;
 }
 
 /* ---------- day and night over the city ---------- */
@@ -9001,6 +9289,7 @@ function setBeastMode(on) {
     document.getElementById('beastCamBtn').textContent = BCAMS[0].icon;
     if (!fig) refreshFig();
     if (fig) fig.visible = false;
+    bmInitCarMeshes();
     bmStreamChunks(99);
     bmSyncProps();
     for (const id of ['hud', 'fabs', 'minimap', 'pickChip', 'nudge', 'worldRail'])
@@ -9016,6 +9305,9 @@ function setBeastMode(on) {
     beastRoot.visible = false;
     for (const key of [...bmChunks.keys()]) bmDropChunk(key);
     for (const pool of bmPropPool.values()) pool.mesh.count = 0;
+    bmCars.length = 0;
+    for (const m of bmCarInst.values()) m.count = 0;
+    bmRedInst.count = bmGrnInst.count = 0;
     Object.assign(play, bmSaved.play);
     Object.assign(chase, bmSaved.chase);
     Object.assign(sun.shadow.camera, bmSaved.shadow);
@@ -9043,6 +9335,8 @@ function stepBeast(dt) {
   bmStreamChunks(1);
   bmSyncProps();
   bmStepWalk(dt);
+  bmStepTraffic(dt);
+  bmSyncLights();
   bmDayNight();
   bmUpdateLamps();
   bmUpdateCamera();
@@ -9144,6 +9438,7 @@ window.app = {
     get nightF() { return bmNightF; },
     setCam: i => bmSetCam(i), get camIdx() { return bmCamIdx; },
     ground: bmGroundAt, blocked: bmBlocked, stream: bmStreamChunks,
+    cars: bmCars, signal: bmSignal,
   },
 };
 </script>
