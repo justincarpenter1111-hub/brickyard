@@ -8507,7 +8507,7 @@ function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz) {
     for (let k = 0; k < 3; k++) {
       const tx = px0 + 6 + R() * 20, tz = pz0 + 6 + R() * 20;
       bmProp(solids.chunk, R() < 0.5 ? 'prop_tree_apple' : 'prop_tree_oak', tx, tz, R() * Math.PI * 2, 4);
-      solids.push([tx - 1, tx + 1, tz - 1, tz + 1, 30, 0]);
+      solids.push([tx - 2, tx + 2, tz - 2, tz + 2, 30, 0]);
     }
     bmProp(solids.chunk, 'prop_bench', cx, cz, faceX === 0 ? Math.PI / 2 : -Math.PI / 2, 4);
     solids.push([cx - 1, cx + 1, cz - 2, cz + 2, 6, 0]);
@@ -8796,15 +8796,16 @@ function bmGenChunk(i, j) {
     // four modular-standard parcels, every one a street corner
     for (const qx of [0, 1]) for (const qz of [0, 1])
       bmBuilding(g, glow, glass, signs, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, qx, qz);
-    // street trees on the wider pavements, between the lamps
+    // street trees hug the kerb line, clear of the walking line — face-first
+    // into a canopy was the single most repeatable immersion breaker
     for (const bs of baySides) {
-      const lat = bs.line + bs.side * 19.5;
+      const lat = bs.line + bs.side * 17;
       for (const along0 of [43, 69]) {
         if (R() > 0.4) continue;
         const along = (bs.alongZ ? z0 : x0) + along0;
         const txp = bs.alongZ ? lat : along, tzp = bs.alongZ ? along : lat;
         bmProp(chunk, 'prop_tree_small', txp, tzp, R() * Math.PI * 2, BM_PATH_TOP);
-        solids.push([txp - 1, txp + 1, tzp - 1, tzp + 1, 26, 0]);
+        solids.push([txp - 2.2, txp + 2.2, tzp - 2.2, tzp + 2.2, 26, 0]);
       }
     }
   }
