@@ -8375,18 +8375,121 @@ function bmChunkType(i, j) {                         // what lives on block (i,j
   return 'city';
 }
 
+/* ---- shop sign atlas ----
+   Twelve kid-friendly shopfronts (sign list co-designed with Codex), drawn
+   once into a canvas atlas; every sign in the city is a quad into it.      */
+const BM_SIGNS = [
+  ['SLICE', '#C91A09', '#FFFFFF', 'pizza'],  ['SCOOPS', '#0055BF', '#FFFFFF', 'scoop'],
+  ['BLOOM', '#237841', '#FFFFFF', 'flower'], ['ZAPPY', '#F2CD37', '#05131D', 'bolt'],
+  ['FIXIT', '#E76318', '#05131D', 'hammer'], ['TOYBOX', '#6C2E9C', '#FFFFFF', 'brick'],
+  ['DONUT', '#E4ADC8', '#05131D', 'donut'],  ['NOODLES', '#7A1208', '#F2CD37', 'bowl'],
+  ['BOOKNOOK', '#352100', '#FFFFFF', 'book'],['PAWS', '#009CBD', '#05131D', 'paw'],
+  ['TUNES', '#05131D', '#00FFFF', 'note'],   ['BEACON', '#F5CD2F', '#05131D', 'bulb'],
+];
+let bmSignMat = null;
+function bmSignIcon(c, kind, ink) {
+  c.fillStyle = ink; c.strokeStyle = ink; c.lineWidth = 5;
+  const dot = (x, y, r) => { c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); };
+  switch (kind) {
+    case 'pizza': c.beginPath(); c.moveTo(10, 20); c.lineTo(54, 32); c.lineTo(10, 56); c.fill();
+      c.fillStyle = '#C91A09'; dot(22, 34, 4); dot(30, 42, 4); dot(20, 46, 3); break;
+    case 'scoop': c.beginPath(); c.moveTo(22, 40); c.lineTo(42, 40); c.lineTo(32, 62); c.fill();
+      dot(26, 32, 9); dot(38, 32, 9); break;
+    case 'flower': dot(32, 30, 7); for (const [px, py] of [[32, 18], [32, 42], [20, 30], [44, 30]]) dot(px, py, 6);
+      c.fillRect(30, 42, 4, 18); break;
+    case 'bolt': c.beginPath(); c.moveTo(36, 12); c.lineTo(20, 38); c.lineTo(30, 38);
+      c.lineTo(26, 58); c.lineTo(44, 30); c.lineTo(33, 30); c.fill(); break;
+    case 'hammer': c.fillRect(28, 24, 8, 34); c.fillRect(16, 14, 32, 12); break;
+    case 'brick': c.fillRect(14, 30, 36, 22); dot(24, 26, 6); dot(40, 26, 6); break;
+    case 'donut': c.beginPath(); c.arc(32, 36, 18, 0, 7); c.fill();
+      c.save(); c.globalCompositeOperation = 'destination-out'; dot(32, 36, 7); c.restore(); break;
+    case 'bowl': c.beginPath(); c.arc(32, 38, 18, 0, Math.PI); c.fill();
+      c.fillRect(14, 34, 36, 6); c.fillRect(24, 14, 3, 12); c.fillRect(34, 12, 3, 14); break;
+    case 'book': c.beginPath(); c.moveTo(10, 22); c.lineTo(30, 28); c.lineTo(30, 56); c.lineTo(10, 50); c.fill();
+      c.beginPath(); c.moveTo(54, 22); c.lineTo(34, 28); c.lineTo(34, 56); c.lineTo(54, 50); c.fill(); break;
+    case 'paw': c.save(); c.translate(32, 42); c.scale(1.25, 1); dot(0, 0, 10); c.restore();
+      dot(18, 28, 5); dot(27, 22, 5); dot(37, 22, 5); dot(46, 28, 5); break;
+    case 'note': dot(24, 50, 8); c.fillRect(30, 18, 4, 32); c.fillRect(30, 18, 16, 8); break;
+    case 'bulb': dot(32, 32, 12); c.fillRect(26, 44, 12, 10);
+      for (const [x1, y1, x2, y2] of [[32, 8, 32, 16], [12, 32, 20, 32], [44, 32, 52, 32]]) {
+        c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+      } break;
+  }
+}
+function bmBuildSignAtlas() {
+  if (bmSignMat) return;
+  const cv = document.createElement('canvas');
+  cv.width = 1024; cv.height = 384;                      // 4 x 3 tiles of 256 x 128
+  const c = cv.getContext('2d');
+  BM_SIGNS.forEach(([name, bg, ink, icon], i) => {
+    const x0 = (i % 4) * 256, y0 = ((i / 4) | 0) * 128;
+    c.save(); c.translate(x0, y0);
+    c.fillStyle = bg; c.fillRect(0, 0, 256, 128);
+    c.strokeStyle = ink; c.lineWidth = 6; c.strokeRect(7, 7, 242, 114);
+    c.save(); c.translate(14, 32); bmSignIcon(c, icon, ink); c.restore();
+    c.fillStyle = ink;
+    let size = 46;
+    c.font = `700 ${size}px Outfit, sans-serif`;
+    while (c.measureText(name).width > 158 && size > 20) {
+      size -= 2; c.font = `700 ${size}px Outfit, sans-serif`;
+    }
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(name, 160, 66);
+    c.restore();
+  });
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  bmSignMat = new THREE.MeshBasicMaterial({ map: tex });
+}
+/* merged textured quads: {x,y plates,z, w studs, h plates, face, tile} */
+const BM_QUAD_RIGHT = [[0, 0, 1], [0, 0, -1], [-1, 0, 0], [1, 0, 0]];
+function bmSignGeo(list) {
+  const n = list.length;
+  const pos = new Float32Array(n * 6 * 3), nor = new Float32Array(n * 6 * 3), uv = new Float32Array(n * 6 * 2);
+  let o = 0, ou = 0;
+  for (const q of list) {
+    const [rx, , rz] = BM_QUAD_RIGHT[q.face];
+    const hw = q.w / 2 * P, hh = q.h / 2 * PH;
+    const cx = q.x * P, cy = q.y * PH, cz = q.z * P;
+    const nx = q.face === 0 ? -1 : q.face === 1 ? 1 : 0;
+    const nz = q.face === 2 ? -1 : q.face === 3 ? 1 : 0;
+    const col = q.tile % 4, row = (q.tile / 4) | 0;
+    const u0 = col * 0.25, u1 = u0 + 0.25, v1 = 1 - row / 3, v0 = 1 - (row + 1) / 3;
+    const corner = (sr, su) => [cx + rx * hw * sr, cy + hh * su, cz + rz * hw * sr];
+    const bl = corner(-1, -1), br = corner(1, -1), tr = corner(1, 1), tl = corner(-1, 1);
+    for (const [pnt, uu, vv] of [[bl, u0, v0], [br, u1, v0], [tr, u1, v1],
+                                 [bl, u0, v0], [tr, u1, v1], [tl, u0, v1]]) {
+      pos.set(pnt, o); nor.set([nx, 0, nz], o); o += 3;
+      uv[ou++] = uu; uv[ou++] = vv;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.computeBoundingSphere();
+  return g;
+}
+const bmBldGlassMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true,
+                                                      opacity: 0.5, depthWrite: false });
+
 /* one window (or door/shopfront) punched proud of a wall face.
    face: 0 = wall faces -x, 1 = +x, 2 = -z, 3 = +z.
    (wx,wz) wall plane position in studs, a = along-face coordinate,
-   y plates, w studs wide, h plates tall.                                   */
-function bmOpening(g, glow, face, wallAt, a, y, w, h, frameCol, lit) {
+   y plates, w studs wide, h plates tall.
+   The pane itself goes to the chunk's glass list so it renders with a real
+   transparent material; a near-black recess behind it sells the depth.     */
+function bmOpening(g, glow, glass, face, wallAt, a, y, w, h, frameCol, lit) {
   const alongX = face >= 2;                 // the face's length runs along x
   const out = (face === 0 || face === 2) ? -1 : 1;
   const fx = alongX ? a : wallAt + out * 0.28, fz = alongX ? wallAt + out * 0.28 : a;
   const sx = alongX ? w + 1 : 0.7, sz = alongX ? 0.7 : w + 1;
   gbox(g, sx, h + 2, sz, fx, y + h / 2, fz, frameCol);                       // frame
-  const gx = alongX ? a : wallAt + out * 0.42, gz = alongX ? wallAt + out * 0.42 : a;
-  gbox(g, alongX ? w : 0.5, h, alongX ? 0.5 : w, gx, y + h / 2, gz, BM_GLASS);   // glass
+  const rx = alongX ? a : wallAt + out * 0.3, rz = alongX ? wallAt + out * 0.3 : a;
+  gbox(g, alongX ? w + 0.2 : 0.25, h + 0.4, alongX ? 0.25 : w + 0.2, rx, y + h / 2, rz, 0x10161C);   // recess
+  const gx = alongX ? a : wallAt + out * 0.5, gz = alongX ? wallAt + out * 0.5 : a;
+  gbox(glass || g, alongX ? w : 0.3, h, alongX ? 0.3 : w, gx, y + h / 2, gz, 0xAFD3E4);   // the pane
   if (lit && glow) {
     const lx = alongX ? a : wallAt + out * 0.62, lz = alongX ? wallAt + out * 0.62 : a;
     gbox(glow, alongX ? w + 0.6 : 0.3, h + 1, alongX ? 0.3 : w + 0.6, lx, y + h / 2, lz, 0xFFDf9E);
@@ -8394,7 +8497,7 @@ function bmOpening(g, glow, face, wallAt, a, y, w, h, frameCol, lit) {
 }
 
 /* a modular-standard corner building filling one 32x32 parcel */
-function bmBuilding(g, glow, solids, R, px0, pz0, qx, qz) {
+function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz) {
   const kindRoll = R();
   const kind = kindRoll < 0.32 ? 'shop' : kindRoll < 0.62 ? 'house' : kindRoll < 0.88 ? 'office' : 'garden';
   const faceX = qx === 0 ? 0 : 1, faceZ = qz === 0 ? 2 : 3;   // which sides meet the street
@@ -8420,6 +8523,7 @@ function bmBuilding(g, glow, solids, R, px0, pz0, qx, qz) {
   const trim = BM_TRIMS[(R() * BM_TRIMS.length) | 0];
   const roofC = BM_ROOFS[(R() * BM_ROOFS.length) | 0];
   const floors = kind === 'house' ? 2 : kind === 'shop' ? 2 + ((R() * 2) | 0) : 3 + ((R() * 3) | 0);
+  const feFace = (kind === 'office' && floors >= 3 && R() < 0.7) ? (R() < 0.5 ? faceX : faceZ) : -1;
   const GF = 26, UF = 21;                                             // plates per floor
   const cx = (bx0 + bx1) / 2, cz = (bz0 + bz1) / 2;
   let y = 4;
@@ -8438,25 +8542,34 @@ function bmBuilding(g, glow, solids, R, px0, pz0, qx, qz) {
       const a0 = alongX ? bx0 : bz0;
       if (f === 0 && kind === 'shop' && face === faceX) {             // shopfront
         const gw = len - 8;
-        bmOpening(g, glow, face, wallAt, a0 + len / 2, y + 3, gw, 16, trim, R() < 0.75);
-        // fascia sign band with little white "letters"
-        const sy = y + 21;
+        const out = (face === 0 || face === 2) ? -1 : 1;
+        bmOpening(g, glow, glass, face, wallAt, a0 + len / 2, y + 3, gw, 16, trim, R() < 0.75);
+        // the shop's own sign, drawn from the atlas, on a dark backing band
+        const tile = (R() * BM_SIGNS.length) | 0;
+        const sy = y + 23.5;
+        if (alongX) gbox(g, len - 4, 7, 1.0, a0 + len / 2, sy, wallAt + out * 0.5, 0x1B2A34);
+        else gbox(g, 1.0, 7, len - 4, wallAt + out * 0.5, sy, a0 + len / 2, 0x1B2A34);
+        signs.push({ x: alongX ? a0 + len / 2 : wallAt + out * 1.15, y: sy,
+                     z: alongX ? wallAt + out * 1.15 : a0 + len / 2,
+                     w: Math.min(len - 6, 15), h: 6, face, tile });
+        // a little projecting blade sign near the corner (Codex's top pick)
+        const ba = a0 + 3.5;
+        const bx = alongX ? ba : wallAt + out * 2.4, bz = alongX ? wallAt + out * 2.4 : ba;
+        if (alongX) gbox(g, 0.6, 1, 2.6, ba, y + 31, wallAt + out * 1.3, 0x1B2A34);
+        else gbox(g, 2.6, 1, 0.6, wallAt + out * 1.3, y + 31, ba, 0x1B2A34);
+        for (const bf of alongX ? [0, 1] : [2, 3]) {
+          const boff = bf === 0 || bf === 2 ? -0.16 : 0.16;
+          signs.push({ x: bx + (alongX ? boff : 0), y: y + 27.5,
+                       z: bz + (alongX ? 0 : boff), w: 5.2, h: 6, face: bf, tile });
+        }
+        // striped awning over the glass
         if (alongX) {
-          gbox(g, len - 4, 5, 1.0, a0 + len / 2, sy, wallAt + (face === 2 ? -0.5 : 0.5),
-               BM_WALLS[(R() * BM_WALLS.length) | 0]);
-          for (let k = 0; k < 4; k++)
-            gbox(g, 1.6, 2, 0.4, a0 + len / 2 - 5 + k * 3.2, sy, wallAt + (face === 2 ? -1.1 : 1.1), 0xF4F4F4);
-          // striped awning over the glass
           for (let s = 0; s < Math.floor(gw / 3); s++)
-            gbox(g, 3, 0.9, 3.4, a0 + 4 + 1.5 + s * 3, y + 17.5, wallAt + (face === 2 ? -2 : 2),
+            gbox(g, 3, 0.9, 3.4, a0 + 4 + 1.5 + s * 3, y + 17.5, wallAt + out * 2,
                  s % 2 ? 0xF4F4F4 : wall === 0xF4F4F4 ? 0xB40000 : wall);
         } else {
-          gbox(g, 1.0, 5, len - 4, wallAt + (face === 0 ? -0.5 : 0.5), sy, a0 + len / 2,
-               BM_WALLS[(R() * BM_WALLS.length) | 0]);
-          for (let k = 0; k < 4; k++)
-            gbox(g, 0.4, 2, 1.6, wallAt + (face === 0 ? -1.1 : 1.1), sy, a0 + len / 2 - 5 + k * 3.2, 0xF4F4F4);
-          for (let s = 0; s < Math.floor((len - 8) / 3); s++)
-            gbox(g, 3.4, 0.9, 3, wallAt + (face === 0 ? -2 : 2), y + 17.5, a0 + 4 + 1.5 + s * 3,
+          for (let s = 0; s < Math.floor(gw / 3); s++)
+            gbox(g, 3.4, 0.9, 3, wallAt + out * 2, y + 17.5, a0 + 4 + 1.5 + s * 3,
                  s % 2 ? 0xF4F4F4 : wall === 0xF4F4F4 ? 0xB40000 : wall);
         }
         continue;
@@ -8467,12 +8580,48 @@ function bmBuilding(g, glow, solids, R, px0, pz0, qx, qz) {
       for (let b = 0; b < bays; b++) {
         const a = a0 + step * (b + 0.5);
         if (b === doorBay) {
-          bmOpening(g, null, face, wallAt, a, y + 0.5, 4, 18, trim, false);
-          const dx = alongX ? a : wallAt + (face === 0 ? -1.2 : 1.2);
-          const dz = alongX ? wallAt + (face === 2 ? -1.2 : 1.2) : a;
+          bmOpening(g, null, null, face, wallAt, a, y + 0.5, 4, 18, trim, false);
+          const out = (face === 0 || face === 2) ? -1 : 1;
+          const dx = alongX ? a : wallAt + out * 1.2;
+          const dz = alongX ? wallAt + out * 1.2 : a;
           gbox(g, alongX ? 5 : 2.2, 1.2, alongX ? 2.2 : 5, dx, 4.6, dz, 0xC8C8C8);  // doorstep
+          // entry canopy with a pair of little lamps that glow at night
+          const cx2 = alongX ? a : wallAt + out * 1.6, cz2 = alongX ? wallAt + out * 1.6 : a;
+          gbox(g, alongX ? 6 : 2.8, 1.2, alongX ? 2.8 : 6, cx2, y + 20.5, cz2, trim);
+          for (const sgn of [-2.8, 2.8]) {
+            const lx = alongX ? a + sgn : wallAt + out * 0.7;
+            const lz = alongX ? wallAt + out * 0.7 : a + sgn;
+            gbox(g, 0.8, 2, 0.8, lx, y + 15, lz, 0xFCAC00);
+            gbox(glow, 1.1, 2.4, 1.1, lx, y + 15, lz, 0xFFD27A);
+          }
         } else {
-          bmOpening(g, glow, face, wallAt, a, y + (f === 0 ? 8 : 6), 3, 12, trim, R() < 0.5);
+          bmOpening(g, glow, glass, face, wallAt, a, y + (f === 0 ? 8 : 6), 3, 12, trim, R() < 0.5);
+          const out = (face === 0 || face === 2) ? -1 : 1;
+          if (kind === 'house' && f > 0 && R() < 0.5) {               // flower window box
+            const yw = y + 6;
+            const tx = alongX ? a : wallAt + out * 1.0, tz = alongX ? wallAt + out * 1.0 : a;
+            gbox(g, alongX ? 3.8 : 1.4, 2, alongX ? 1.4 : 3.8, tx, yw - 1.4, tz, 0x352100);
+            for (let pk = -1; pk <= 1; pk++) {
+              const px2 = alongX ? a + pk * 1.15 : wallAt + out * 1.0;
+              const pz2 = alongX ? wallAt + out * 1.0 : a + pk * 1.15;
+              gbox(g, 0.8, 1.8, 0.8, px2, yw + 0.4, pz2,
+                   pk === 0 ? [0xB40000, 0xFAC80A, 0xE06A9F][(R() * 3) | 0] : 0x00852B);
+            }
+          }
+          if (face === feFace && f > 0) {                             // fire escape floor
+            const mid = a0 + len / 2;
+            const fx2 = alongX ? mid : wallAt + out * 1.7, fz2 = alongX ? wallAt + out * 1.7 : mid;
+            gbox(g, alongX ? 8 : 2.8, 1, alongX ? 2.8 : 8, fx2, y + 3.5, fz2, 0x3B4045);   // landing
+            const rx2 = alongX ? mid : wallAt + out * 2.9, rz2 = alongX ? wallAt + out * 2.9 : mid;
+            gbox(g, alongX ? 8 : 0.4, 0.8, alongX ? 0.4 : 8, rx2, y + 7.5, rz2, 0x3B4045); // rail
+            for (const sgn of [-3.8, 3.8]) {
+              const ux = alongX ? mid + sgn : wallAt + out * 2.9;
+              const uz = alongX ? wallAt + out * 2.9 : mid + sgn;
+              gbox(g, 0.4, 4.5, 0.4, ux, y + 5.5, uz, 0x3B4045);
+            }
+            const lx2 = alongX ? mid - 2 : wallAt + out * 2.3, lz2 = alongX ? wallAt + out * 2.3 : mid - 2;
+            gbox(g, alongX ? 1.6 : 0.5, 18, alongX ? 0.5 : 1.6, lx2, y - 6, lz2, 0x3B4045);   // ladder
+          }
         }
       }
     }
@@ -8491,10 +8640,11 @@ function bmBuilding(g, glow, solids, R, px0, pz0, qx, qz) {
     gbox(g, 2.5, 8, 2.5, cx + sxz / 2 - 5, y - 2, cz + szz / 2 - 5, 0xB40000);  // chimney
     solids.push([bx0, bx1, bz0, bz1, y + 2, 0]);
   } else {                                                            // flat roof + parapet
-    gbox(g, sxz, 1.5, szz, cx, y + 2.2, cz, 0x646464);
+    // the slab stays inside the parapet ring — overlapping them speckled every roofline
+    gbox(g, sxz - 2.4, 1.5, szz - 2.4, cx, y + 2.2, cz, 0x646464);
     for (const [ex, ez, sw, sd] of [[cx, bz0 + 0.5, sxz, 1], [cx, bz1 - 0.5, sxz, 1],
                                     [bx0 + 0.5, cz, 1, szz - 2], [bx1 - 0.5, cz, 1, szz - 2]])
-      gbox(g, sw, 3.5, sd, ex, y + 3.5, ez, wall);
+      gbox(g, sw, 3.5, sd, ex, y + 3.0, ez, wall);
     if (kind === 'office') {                                          // rooftop plant
       gbox(g, 4, 4, 3, cx - 3, y + 4.4, cz - 2, 0x969696);
       gbox(g, 2.5, 3, 2.5, cx + 4, y + 4, cz + 3, 0x646464);
@@ -8509,8 +8659,9 @@ function bmProp(chunk, t, x, z, yaw, y) { chunk.props.push({ t, x, z, yaw: yaw |
 function bmGenChunk(i, j) {
   const R = rng(bmSeed(i, j));
   const x0 = i * BM.PITCH, z0 = j * BM.PITCH;
-  const g = [], glow = [];
-  const chunk = { i, j, mesh: null, glowMesh: null, solids: [], props: [] };
+  const g = [], glow = [], glass = [], signs = [];
+  const chunk = { i, j, mesh: null, glowMesh: null, glassMesh: null, signMesh: null,
+                  solids: [], props: [] };
   const solids = chunk.solids; solids.chunk = chunk;
   const type = bmChunkType(i, j);
 
@@ -8644,7 +8795,7 @@ function bmGenChunk(i, j) {
   } else {
     // four modular-standard parcels, every one a street corner
     for (const qx of [0, 1]) for (const qz of [0, 1])
-      bmBuilding(g, glow, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, qx, qz);
+      bmBuilding(g, glow, glass, signs, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, qx, qz);
     // street trees on the wider pavements, between the lamps
     for (const bs of baySides) {
       const lat = bs.line + bs.side * 19.5;
@@ -8666,6 +8817,14 @@ function bmGenChunk(i, j) {
     chunk.glowMesh.visible = false;
     beastRoot.add(chunk.glowMesh);
   }
+  if (glass.length) {
+    chunk.glassMesh = new THREE.Mesh(gmerge(glass), bmBldGlassMat);
+    beastRoot.add(chunk.glassMesh);
+  }
+  if (signs.length && bmSignMat) {
+    chunk.signMesh = new THREE.Mesh(bmSignGeo(signs), bmSignMat);
+    beastRoot.add(chunk.signMesh);
+  }
   bmChunks.set(i + ',' + j, chunk);
   bmPropsDirty = true;
   bmLightsDirty = true;
@@ -8677,6 +8836,8 @@ function bmDropChunk(key) {
   if (!c) return;
   if (c.mesh) { beastRoot.remove(c.mesh); c.mesh.geometry.dispose(); }
   if (c.glowMesh) { beastRoot.remove(c.glowMesh); c.glowMesh.geometry.dispose(); }
+  if (c.glassMesh) { beastRoot.remove(c.glassMesh); c.glassMesh.geometry.dispose(); }
+  if (c.signMesh) { beastRoot.remove(c.signMesh); c.signMesh.geometry.dispose(); }
   bmChunks.delete(key);
   bmPropsDirty = true;
   bmLightsDirty = true;
@@ -9824,6 +9985,7 @@ function setBeastMode(on) {
     if (fig) fig.visible = false;
     bmInitCarMeshes();
     bmInitAmbient();
+    bmBuildSignAtlas();
     bmStreamChunks(99);
     bmSyncProps();
     for (const id of ['hud', 'fabs', 'minimap', 'pickChip', 'nudge', 'worldRail'])
