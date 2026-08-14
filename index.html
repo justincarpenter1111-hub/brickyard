@@ -8696,6 +8696,95 @@ function bmStuds(g, xa, za, xb, zb, y, col, step) {
       gcyl(g, 0.3, 1.0, sx, y + 0.5, sz, col, 6);
 }
 
+/* ---- the elevated railway ----
+   One line runs the whole length of the city above the z=0 street (Codex
+   engineered the viaduct: deck top 26 plates, piers in the parking strips
+   clear of the lanes, trucks clear underneath). Every fourth block has a
+   station; block 1 gets Grand Central.                                     */
+const BM_RAIL_Z = 0;
+function bmRailStationX(i) { return i * BM.PITCH + 56; }
+function bmIsStation(i) { return ((i % 4) + 4) % 4 === 3; }
+function bmRail(g, glow, solids, chunk, x0, i) {
+  gbox(g, 112, 3, 10, x0 + 56, 24.5, 0, 0x8A8F93);                   // deck
+  for (const s of [-4.75, 4.75]) {
+    gbox(g, 112, 1, 0.5, x0 + 56, 26.5, s, 0x666A6D);                // kerbs
+    gbox(g, 112, 0.5, 0.5, x0 + 56, 30, s, 0x4C5154);                // guard rail
+    for (let p = 2; p < 112; p += 8) gbox(g, 0.5, 3, 0.5, x0 + p, 28.5, s, 0x4C5154);
+  }
+  for (let sx = 2; sx < 112; sx += 4) gbox(g, 2, 1, 8, x0 + sx, 26.5, 0, 0x5A4633);   // sleepers
+  for (const s of [-2.5, 2.5]) gbox(g, 112, 1, 0.5, x0 + 56, 27.5, s, 0x494D50);      // rails
+  for (const px of [20, 44, 68, 92]) {                               // piers, clear of crossings
+    for (const s of [-11, 11]) {
+      gbox(g, 4, 21, 2, x0 + px, 10.5, s, 0x7E8386);
+      solids.push([x0 + px - 2, x0 + px + 2, s - 1, s + 1, 21, 0]);
+    }
+    gbox(g, 4, 2, 26, x0 + px, 22, 0, 0x7E8386);                     // crosshead
+  }
+  if (i === 1) { bmGrandCentral(g, glow, solids, chunk, x0); return; }
+  if (!bmIsStation(i)) return;
+  const cx = x0 + 56;                                                // a neighbourhood station
+  gbox(g, 32, 2, 7, cx, 27, 7, 0xB9B5A9);                            // platform, rail-top height
+  solids.push([cx - 16, cx + 16, 3.5, 10.5, 28, 0]);
+  for (let k = 0; k < 14; k++) {                                     // stairs down to the footpath
+    const sz = 23.5 - k, h = 2 * (k + 1);
+    gbox(g, 4, h, 1, cx, h / 2, sz, 0xB9B5A9);
+    solids.push([cx - 2, cx + 2, sz - 0.5, sz + 0.5, h, 0]);
+  }
+  gbox(g, 24, 1, 8, cx, 46.5, 7, 0x2F5D7C);                          // canopy
+  for (const [sx2, sz2] of [[-10, 4.5], [-10, 9.5], [10, 4.5], [10, 9.5]])
+    gbox(g, 0.5, 18, 0.5, cx + sx2, 37, sz2, 0x4C5154);
+  gbox(g, 32, 4, 0.5, cx, 30, 10.25, 0x666A6D);                      // outer parapet
+  solids.push([cx - 16, cx + 16, 10, 10.5, 34, 26]);
+  gbox(glow, 20, 1.2, 6, cx, 45.6, 7, 0xFFD27A);                     // platform light at night
+}
+function bmGrandCentral(g, glow, solids, chunk, x0) {
+  const cx = x0 + 56, gold = 0xB89B68;
+  for (const fx of [-15, 15]) {                                      // the two great facades
+    for (const sz of [-18, 18]) {
+      gbox(g, 2, 38, 12, cx + fx, 19, sz, gold);                     // flanking towers
+      solids.push([cx + fx - 1, cx + fx + 1, sz - 6, sz + 6, 38, 0]);
+    }
+    gbox(g, 2, 4, 14, cx + fx, 40, -17, gold);                       // stepped arch
+    gbox(g, 2, 4, 14, cx + fx, 40, 17, gold);
+    gbox(g, 2, 4, 16, cx + fx, 44, -16, gold);
+    gbox(g, 2, 4, 16, cx + fx, 44, 16, gold);
+    gbox(g, 2, 4, 18, cx + fx, 48, -15, gold);
+    gbox(g, 2, 4, 18, cx + fx, 48, 15, gold);
+    gbox(g, 2, 16, 48, cx + fx, 58, 0, gold);                        // attic band
+  }
+  for (const sz of [-23, 23]) {                                      // long side walls
+    gbox(g, 28, 66, 2, cx, 33, sz, gold);
+    solids.push([cx - 14, cx + 14, sz - 1, sz + 1, 66, 0]);
+  }
+  gbox(g, 32, 2, 48, cx, 67, 0, 0x4F5558);                           // roof
+  bmStuds(g, cx - 14, -22, cx + 14, 22, 68.2, 0x5A6064, 6);
+  gbox(g, 28, 2, 8, cx, 27, 9, 0xB9B5A9);                            // interior platform
+  solids.push([cx - 14, cx + 14, 5, 13, 28, 0]);
+  gbox(glow, 26, 2, 2, cx, 60, 0, 0xFFD27A);                         // hall glow
+  gbox(g, 0.5, 3, 28, cx - 16.25, 51.5, 0, 0x263746);                // sign band
+  // clock over the west approach
+  gbox(g, 0.6, 8, 8, cx - 16.4, 59, 0, 0xE4D8B4);
+  gbox(g, 0.7, 4, 0.7, cx - 16.7, 60.5, 0, 0x202020);
+  gbox(g, 0.7, 0.7, 2.6, cx - 16.7, 59, 1, 0x202020);
+  // "GRAND CENTRAL" lettering on its own little canvas
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 64;
+  const c2 = cv.getContext('2d');
+  c2.fillStyle = '#263746'; c2.fillRect(0, 0, 512, 64);
+  c2.fillStyle = '#F5CD2F';
+  c2.font = '700 42px Outfit, sans-serif';
+  c2.textAlign = 'center'; c2.textBaseline = 'middle';
+  c2.fillText('GRAND CENTRAL', 256, 34);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(26 * P, 2.6 * PH),
+    new THREE.MeshBasicMaterial({ map: tex }));
+  quad.rotation.y = -Math.PI / 2;
+  quad.position.set((cx - 16.6) * P, 51.5 * PH, 0);
+  beastRoot.add(quad);
+  chunk.gcSign = quad;
+}
+
 /* ---- home ----
    The parcel the player wakes up in (Codex drew the floor plan): a one-storey
    house with an open doorway, a bedroom with the bed/rug/lamp/teddy, and a
@@ -8854,6 +8943,7 @@ function bmGenChunk(i, j) {
     { alongZ: false, line: z0 + BM.PITCH, side: -1, yaw: Math.PI / 2 },  // north street, south kerb: traffic +x
   ];
   for (const bs of baySides) {
+    if (!bs.alongZ && bs.line === 0) continue;      // the rail corridor keeps its road clear
     const lat = bs.line + bs.side * 11;                               // bay centre, 3 studs off the kerb
     for (let b = 0; b < 3; b++) {
       const along = (bs.alongZ ? z0 : x0) + 32 + 8 + b * 16;          // bays at 40, 56, 72
@@ -8935,6 +9025,8 @@ function bmGenChunk(i, j) {
       gbox(glow, 1.4, 1.4, 1.4, lxp, BM_PATH_TOP + 11.4, lzp, 0xFFD39A);
     }
   }
+
+  if (j === 0) bmRail(g, glow, solids, chunk, x0, i);
 
   if (type === 'plaza') {
     // the market square: stone paving, a fountain, two rows of stalls
@@ -9056,6 +9148,7 @@ function bmDropChunk(key) {
   if (c.glowMesh) { beastRoot.remove(c.glowMesh); c.glowMesh.geometry.dispose(); }
   if (c.glassMesh) { beastRoot.remove(c.glassMesh); c.glassMesh.geometry.dispose(); }
   if (c.signMesh) { beastRoot.remove(c.signMesh); c.signMesh.geometry.dispose(); }
+  if (c.gcSign) { beastRoot.remove(c.gcSign); c.gcSign.geometry.dispose(); c.gcSign.material.map.dispose(); }
   bmChunks.delete(key);
   bmPropsDirty = true;
   bmLightsDirty = true;
@@ -10075,8 +10168,54 @@ function bmHeliGeo() {
   for (const sx of [-2.4, 2.4]) gbox(g, 1, 1.2, 10, sx, -5.2, -1, 0x646464);   // skids
   return gmerge(g);
 }
+/* the train: a loco and three coaches on the high line, calling at stations */
+const bmTrainCars = [];
+let bmTrainX = 300, bmTrainV = 0, bmTrainDwell = 0;
+function bmInitTrain() {
+  if (bmTrainCars.length || !geos.get('train_loco')) return;
+  for (const t of ['train_loco', 'train_car_red', 'train_car_blue', 'train_car_red']) {
+    const m = new THREE.Mesh(geos.get(t), propMat);
+    m.castShadow = true;
+    beastRoot.add(m);
+    bmTrainCars.push(m);
+  }
+}
+function bmStepTrain(dt) {
+  if (!bmTrainCars.length) return;
+  const px = play.x / P;
+  if (bmTrainX - px > 700) bmTrainX -= 1400;
+  if (px - bmTrainX > 700) bmTrainX += 1400;
+  if (bmTrainDwell > 0) bmTrainDwell -= dt;
+  else {
+    // brake for the next station ahead (every 4th block, and Grand Central)
+    const iHere = Math.floor(bmTrainX / BM.PITCH);
+    let stop = null;
+    for (let k = 0; k < 6; k++) {
+      const i2 = iHere + k;
+      if (bmIsStation(i2) || i2 === 1) {
+        const sx = bmRailStationX(i2);
+        if (sx > bmTrainX + 1) { stop = sx; break; }
+      }
+    }
+    let want = 30;
+    if (stop != null) {
+      const s = stop - bmTrainX;
+      if (s < 1.5) { bmTrainV = 0; bmTrainDwell = 3; }
+      else want = Math.min(want, Math.sqrt(2 * 14 * Math.max(0.1, s - 1)));
+    }
+    bmTrainV += (want - bmTrainV) * Math.min(1, dt * 1.2);
+    bmTrainX += bmTrainV * dt;
+  }
+  for (let k = 0; k < bmTrainCars.length; k++) {
+    const m = bmTrainCars[k];
+    m.visible = true;
+    m.position.set((bmTrainX - k * 34) * P, 26.2 * PH, 0);
+    m.rotation.y = Math.PI / 2;
+  }
+}
 function bmInitAmbient() {
   if (bmBirdUp) return;
+  bmInitTrain();
   bmBirdUp = new THREE.InstancedMesh(bmBirdGeo(true), propMat, 12);
   bmBirdDn = new THREE.InstancedMesh(bmBirdGeo(false), propMat, 12);
   bmBirdUp.frustumCulled = bmBirdDn.frustumCulled = false;
@@ -10115,6 +10254,7 @@ function bmInitAmbient() {
   beastRoot.add(bmPlane, bmHeli);
 }
 function bmStepAmbient(dt) {
+  bmStepTrain(dt);
   const px = play.x / P, pz = play.z / P;
   // birds: two loose flocks circling near the player — they sit out the rain
   let n = 0, m = 0;
@@ -10587,6 +10727,15 @@ function bmDrawMap(ctx, size, range, headingUp) {
                    j * BM.PITCH + 24 + (q & 1) * 32 + 10 - pz, 12, 12);
     }
   }
+  // the high line
+  ctx.strokeStyle = '#5A6068';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath();
+  ctx.moveTo(-range * 1.5, -pz);
+  ctx.lineTo(range * 1.5, -pz);
+  ctx.stroke();
+  ctx.setLineDash([]);
   // home, always
   ctx.fillStyle = '#E53935';
   ctx.beginPath();
@@ -10718,6 +10867,7 @@ function setBeastMode(on) {
     if (bmCloudInst) bmCloudInst.count = 0;
     if (bmPlane) bmPlane.visible = false;
     if (bmHeli) bmHeli.visible = false;
+    for (const m of bmTrainCars) m.visible = false;
     bmAir = null;
     Object.assign(play, bmSaved.play);
     Object.assign(chase, bmSaved.chase);
