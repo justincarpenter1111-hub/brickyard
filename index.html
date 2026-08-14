@@ -9153,6 +9153,7 @@ function bmAheadGap(car) {         // bumper clearance to whatever is queued ahe
   let gap = 999;
   for (const o of bmCars) {
     if (o === car) continue;
+    if (o.act === 'arc' && o.v > 4) continue;      // sweeping through, it will clear
     const a = (o.x - car.x) * dx + (o.z - car.z) * dz;                 // ahead of us?
     const lat = Math.abs((o.x - car.x) * dz - (o.z - car.z) * dx);     // and on our lane?
     if (a > 0 && lat < 5.5) gap = Math.min(gap, a - half - o.len / 2);
@@ -9186,11 +9187,16 @@ function bmStepTraffic(dt) {
       const hx0 = Math.sin(car.yaw), hz0 = Math.cos(car.yaw);
       for (const o of bmCars) {
         if (o === car) continue;
+        // fast movers will have cleared before we meet them — braking for them
+        // mid-box is what caused the taxi/van gridlock. The yield at the stop
+        // line already guaranteed our gap; only slow or stopped things block.
+        if (o.v > 6) continue;
         // an opposite left-turner we out-rank is waiting for us — don't freeze on it
         if (A.left && o.arc && o.arc.left && o.d === (car.d + 2) % 4 && car.d < o.d && o.v < 2) continue;
         const ddx = o.x - car.x, ddz = o.z - car.z;
         const dd = Math.hypot(ddx, ddz);
-        if (dd < 17 && (ddx * hx0 + ddz * hz0) / (dd || 1) > 0.55) { blockedAhead = true; break; }
+        const reach = 10 + (o.len + car.len) / 4;
+        if (dd < reach && (ddx * hx0 + ddz * hz0) / (dd || 1) > 0.55) { blockedAhead = true; break; }
       }
       {
         const ddx = play.x / P - car.x, ddz = play.z / P - car.z;
@@ -9202,8 +9208,11 @@ function bmStepTraffic(dt) {
         const dd = Math.hypot(ddx, ddz);
         if (dd < 14 && (ddx * hx0 + ddz * hz0) / (dd || 1) > 0.5) { blockedAhead = true; break; }
       }
+      // stalled mid-box too long? creep out — a slow squeeze beats a gridlock
+      A.stall = blockedAhead ? (A.stall || 0) + dt : 0;
+      if (A.stall > 6) blockedAhead = false;
       car.v = blockedAhead ? Math.max(0, car.v - CAR_BRK * dt)
-                           : Math.min(CAR_TURN_V, car.v + CAR_ACC * dt);
+                           : Math.min(A.stall > 6 ? 5 : CAR_TURN_V, car.v + CAR_ACC * dt);
       A.a += car.v * dt / A.r;
       if (A.a >= Math.PI / 2) {              // out of the turn, snapped onto the new lane
         car.d = A.toDir;
@@ -9244,14 +9253,39 @@ function bmStepTraffic(dt) {
     }
     const green = (dz !== 0) ? sig.ns : sig.ew;
     // the tail of a green works as amber: never commit to the box on a light
-    // about to flip, or you meet the cross traffic halfway through it
+    // about to flip. How much amber a vehicle needs depends on how long it is
+    // and how fast it's going — a bus can't clear on a sedan's margin.
     const cyc = bmClock % 16;
     const remaining = (dz !== 0) ? (cyc < 7 ? 7 - cyc : 0) : (cyc >= 8 && cyc < 15 ? 15 - cyc : 0);
-    const amber = green && remaining < 1.6;
+    const timeToClear = (s + car.len / 2 + 18) / Math.max(car.v, 14);
+    const amber = green && remaining + 0.9 < timeToClear;
     let want = car.max;
     // red light (or a left turn waiting its gap): stop with the nose at the line
     let holdAt = null;
     if (s > 0 && s < 60 && (!green || (amber && s > 12)) && s > car.stopS - 6) holdAt = car.stopS;
+    // and even on a fresh green, wait for the box to empty of cross traffic
+    if (green && holdAt == null && s > 12 && s <= car.stopS + 6) {
+      for (const o of bmCars) {
+        if (o === car || (o.d + car.d) % 2 === 0) continue;      // only cross-axis traffic
+        if (Math.abs(o.x - ix) < 14 && Math.abs(o.z - iz) < 14) { holdAt = car.stopS; break; }
+      }
+    }
+    // never enter the box unless the exit lane has room to receive us
+    if (car.decided === key && car.turn && green && s > 0 && s <= car.stopS + 4 && holdAt == null) {
+      const left = car.turn === 2;
+      const toD = left ? (car.d + 3) % 4 : (car.d + 1) % 4;
+      const exX = left ? ix + 4 * dx - 8 * rx : ix - 4 * dx + 8 * rx;
+      const exZ = left ? iz + 4 * dz - 8 * rz : iz - 4 * dz + 8 * rz;
+      const [exd, ezd] = BM_DIRS[toD];
+      for (const o of bmCars) {
+        if (o === car) continue;
+        const a2 = (o.x - exX) * exd + (o.z - exZ) * ezd;
+        const lat2 = Math.abs((o.x - exX) * ezd - (o.z - exZ) * exd);
+        if (lat2 < 5 && a2 > -o.len / 2 && a2 < car.len + o.len / 2 + 5 && o.v < 6) {
+          holdAt = car.stopS; break;
+        }
+      }
+    }
     if (car.decided === key && car.turn === 2 && green && s > 0 && s <= car.stopS + 4) {
       // left turns give way to oncoming traffic; two opposite left-turners
       // would sweep through each other, so the lower direction index goes first
@@ -9260,8 +9294,14 @@ function bmStepTraffic(dt) {
         const os = (ix - o.x) * BM_DIRS[o.d][0] + (iz - o.z) * BM_DIRS[o.d][1];
         if (os <= -10 || os >= 75) continue;
         const oLeft = o.turn === 2 && o.decided;
-        if (oLeft) { if (car.d > o.d) { holdAt = car.stopS; break; } }
-        else if (o.v > 3) { holdAt = car.stopS; break; }
+        // defer only to an opposite left-turner actually at the box (or moving
+        // toward it) — deferring to one buried in a queue held whole streets
+        if (oLeft) {
+          if ((os < 40 || o.v > 3) && car.d > o.d && (car.greenWait || 0) < 6) { holdAt = car.stopS; break; }
+        }
+        // moving oncoming traffic, or a stopped one at the line about to launch
+        // on our shared green — both cross the left turn's path
+        else if (o.v > 3 || os < 35) { holdAt = car.stopS; break; }
       }
     }
     if (holdAt != null && s > holdAt - 1) {
@@ -9277,6 +9317,10 @@ function bmStepTraffic(dt) {
       const room = clear - 3.5;
       want = room <= 0 ? 0 : Math.min(want, Math.sqrt(Math.max(0, 2 * CAR_BRK * room)) * 0.7);
     }
+    // count time spent parked at the line on a green — the anti-starvation clock
+    if (green && car.v < 1 && s > car.stopS - 3 && s < car.stopS + 8)
+      car.greenWait = (car.greenWait || 0) + dt;
+    else if (!green || car.v > 5) car.greenWait = 0;
     if (car.v < want) car.v = Math.min(want, car.v + CAR_ACC * dt);
     else car.v = Math.max(want, car.v - CAR_BRK * dt);
     // move
@@ -9971,6 +10015,10 @@ function setBeastMode(on) {
     scene.add(sun.target);
     Object.assign(sun.shadow.camera, { left: -0.55, right: 0.55, top: 0.55, bottom: -0.55 });
     sun.shadow.camera.updateProjectionMatrix();
+    // the city's shadow box is a quarter of the build board's, so half the map
+    // resolution keeps the same crispness at half the GPU cost (iPad headroom)
+    sun.shadow.mapSize.set(2048, 2048);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
     for (const l of lampPool) { l.visible = false; l.distance = 0.22; }
     Object.assign(play, { x: 19 * P, z: 45 * P, y: BM_PATH_TOP * PH, vy: 0, yaw: Math.PI,
                           phase: 0, grounded: true, swimming: false });
@@ -10015,6 +10063,8 @@ function setBeastMode(on) {
     Object.assign(chase, bmSaved.chase);
     Object.assign(sun.shadow.camera, bmSaved.shadow);
     sun.shadow.camera.updateProjectionMatrix();
+    sun.shadow.mapSize.set(4096, 4096);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
     sun.position.copy(bmSaved.sunPos);
     sun.target.position.set(0, 0, 0);
     for (const l of lampPool) { l.visible = false; l.distance = bmSaved.lampDist; }
