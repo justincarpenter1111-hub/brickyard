@@ -8383,6 +8383,7 @@ function bmChunkType(i, j) {                         // what lives on block (i,j
   const r = rng(bmSeed(i * 3 + 11, j * 3 - 7))();
   const d = bmDistrict(i, j);
   if (r < (d === 'suburb' ? 0.24 : d === 'downtown' ? 0.07 : 0.15)) return 'park';
+  if (d !== 'suburb' && r < (d === 'downtown' ? 0.16 : 0.22)) return 'plaza';
   return 'city';
 }
 
@@ -8864,7 +8865,34 @@ function bmGenChunk(i, j) {
     }
   }
 
-  if (type === 'park') {
+  if (type === 'plaza') {
+    // the market square: stone paving, a fountain, two rows of stalls
+    gbox(g, 64, 0.5, 64, x0 + 56, 4.4, z0 + 56, 0xC8C8C8);
+    gbox(g, 20, 0.6, 20, x0 + 56, 4.5, z0 + 56, 0x8A928D);
+    bmProp(chunk, 'prop_fountain', x0 + 56, z0 + 56, 0, BM_PATH_TOP);
+    solids.push([x0 + 52, x0 + 60, z0 + 52, z0 + 60, 14, 0]);
+    for (const [sxq, szq, yaw] of [[38, 38, Math.PI / 2], [38, 56, Math.PI / 2], [38, 74, Math.PI / 2],
+                                   [74, 38, -Math.PI / 2], [74, 56, -Math.PI / 2], [74, 74, -Math.PI / 2]]) {
+      bmProp(chunk, 'prop_market_stall', x0 + sxq, z0 + szq, yaw, BM_PATH_TOP);
+      solids.push([x0 + sxq - 4, x0 + sxq + 4, z0 + szq - 3, z0 + szq + 3, 20, 0]);
+    }
+    for (const [bx, bz, yaw] of [[47, 47, Math.PI * 0.75], [65, 47, -Math.PI * 0.75],
+                                 [47, 65, Math.PI * 0.25], [65, 65, -Math.PI * 0.25]]) {
+      bmProp(chunk, 'prop_bench', x0 + bx, z0 + bz, yaw, BM_PATH_TOP);
+      solids.push([x0 + bx - 2, x0 + bx + 2, z0 + bz - 1.5, z0 + bz + 1.5, BM_PATH_TOP + 5, 0]);
+    }
+    for (const [tx, tz] of [[28, 28], [84, 28], [28, 84], [84, 84]]) {
+      bmProp(chunk, 'prop_tree_small', x0 + tx, z0 + tz, R() * Math.PI * 2, BM_PATH_TOP);
+      solids.push([x0 + tx - 2, x0 + tx + 2, z0 + tz - 2, z0 + tz + 2, 26, 0]);
+    }
+    for (let k = 0; k < 8; k++) {                       // planter boxes around the square
+      const a = k / 8 * Math.PI * 2;
+      const pxq = x0 + 56 + Math.cos(a) * 26, pzq = z0 + 56 + Math.sin(a) * 26;
+      gbox(g, 2.4, 3, 2.4, pxq, 6, pzq, 0x646464);
+      gbox(g, 1.8, 2, 1.8, pxq, 8.2, pzq, [0xB40000, 0xFAC80A, 0xE06A9F, 0x00852B][k % 4]);
+      solids.push([pxq - 1.4, pxq + 1.4, pzq - 1.4, pzq + 1.4, 9, 0]);
+    }
+  } else if (type === 'park') {
     // paths in a cross, plaza, fountain, benches, trees, flowers
     gbox(g, 64, 0.4, 5, x0 + 56, 5.35, z0 + 56, 0xD7BA8C);
     gbox(g, 5, 0.4, 64, x0 + 56, 5.35, z0 + 56, 0xD7BA8C);
