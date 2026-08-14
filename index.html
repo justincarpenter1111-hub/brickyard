@@ -501,6 +501,7 @@ input[type=text] { font-size:16px; padding:11px 12px; border-radius:12px; border
 
 <div id="beastHud" class="hidden">
   <button id="beastCamBtn" title="Camera view">👁</button>
+  <button id="beastWideBtn" title="Wide angle">🔭</button>
   <button id="beastSprintBtn" title="Sprint">⚡</button>
   <button id="beastExitBtn" title="Leave the city">✕</button>
 </div>
@@ -8805,20 +8806,20 @@ function bmHome(g, glow, solids, chunk) {
   W(1, 21, 23, -14.5, 10.5, 17.5, wallC);                            // shell
   W(1, 21, 23, 14.5, 10.5, 17.5, wallC);
   W(30, 21, 1, 0, 10.5, 28.5, wallC);
-  W(13.5, 21, 1, -8.25, 10.5, 6.5, wallC);
-  W(3.5, 21, 1, 3.25, 10.5, 6.5, wallC);
-  W(3, 3, 1, 0, 19.5, 6.5, wallC);                                   // front door header
+  W(12.5, 21, 1, -8.75, 10.5, 6.5, wallC);
+  W(2.5, 21, 1, 3.75, 10.5, 6.5, wallC);
+  W(5, 3, 1, 0, 19.5, 6.5, wallC);                                   // front door header (5-stud opening)
   gbox(g, 20, 1.4, 24.5, X(-5), Y(21.7), Z(17.5), roofC);            // roofs
   gbox(g, 10, 1.4, 24.5, X(10), Y(21.7), Z(17.5), roofC);
   bmStuds(g, X(-15), Z(6.5), X(15), Z(28.5), Y(22.4), roofC, 4);
   solids.push([X(-15), X(15), Z(6), Z(29), Y(22.4), Y(21)]);
-  W(1, 21, 15, 5.5, 10.5, 13.5, wallC);                              // garage divider
-  W(1, 21, 5, 5.5, 10.5, 26.5, wallC);
-  W(1, 3, 3, 5.5, 19.5, 22.5, wallC);
+  W(1, 21, 14, 5.5, 10.5, 13, wallC);                                // garage divider
+  W(1, 21, 4, 5.5, 10.5, 27, wallC);
+  W(1, 3, 5, 5.5, 19.5, 22.5, wallC);
   W(1, 21, 12, -3.5, 10.5, 22, wallC);                               // bedroom wall
-  W(5, 21, 1, -11.5, 10.5, 16.5, wallC);
-  W(3, 21, 1, -4.5, 10.5, 16.5, wallC);
-  W(3, 3, 1, -7.5, 19.5, 16.5, wallC);
+  W(4, 21, 1, -12, 10.5, 16.5, wallC);
+  W(2, 21, 1, -4, 10.5, 16.5, wallC);
+  W(5, 3, 1, -7.5, 19.5, 16.5, wallC);
   // windows: one on each outer bedroom wall, warm at night
   for (const [lx, lz, alongX] of [[-14.5, 21, false], [-8, 28.5, true]]) {
     gbox(g, alongX ? 4 : 1.4, 10, alongX ? 1.4 : 4, X(lx), Y(12), Z(lz), 0x10161C);
@@ -8832,7 +8833,7 @@ function bmHome(g, glow, solids, chunk) {
   bmProp(chunk, 'prop_rug', 33, 46, 0, 5);
   bmProp(chunk, 'prop_lamp_floor', 35, 50.5, 0, 5);
   gbox(glow, 1.6, 2, 1.6, 35, Y(9), 50.5, 0xFFD27A);
-  bmProp(chunk, 'prop_teddy', 28.4, 48, -0.6, 11);
+  bmProp(chunk, 'prop_teddy', 33.5, 47.6, -2.4, 6);   // on the rug, feet down
   bmProp(chunk, 'prop_bookshelf', 33.8, 51.4, Math.PI, 5);
   solids.push([32, 35.6, 50.4, 52.2, 20, 5]);
   bmProp(chunk, 'prop_armchair', 27, 40.5, 0.8, 5);
@@ -10491,7 +10492,11 @@ const BCAMS = [
   { id: 'shoulder', icon: '🎯', name: 'Over-shoulder', fov: 52, near: 0.0022, dist: 0.030 },
   { id: 'wide',     icon: '🌄', name: 'Wide',          fov: 74, near: 0.005,  dist: 0.45  },
 ];
-let bmCamIdx = 0, bmMoveF = 0;
+let bmCamIdx = 0, bmMoveF = 0, bmWide = false;
+function bmApplyFov() {
+  camera.fov = BCAMS[bmCamIdx].fov + (bmWide ? 24 : 0);
+  camera.updateProjectionMatrix();
+}
 function bmSetCam(i) {
   BCAMS[bmCamIdx].dist = chase.dist;
   bmCamIdx = ((i % BCAMS.length) + BCAMS.length) % BCAMS.length;
@@ -10499,8 +10504,8 @@ function bmSetCam(i) {
   chase.dist = c.dist;
   if (c.id === 'fpv') chase.phi = Math.PI / 2;
   else if (chase.phi > 1.9 || chase.phi < 0.3) chase.phi = 1.2;
-  camera.fov = c.fov; camera.near = c.near;
-  camera.updateProjectionMatrix();
+  camera.near = c.near;
+  bmApplyFov();
   const btn = document.getElementById('beastCamBtn');
   if (btn) btn.textContent = c.icon;
   toast(c.name + ' camera');
@@ -10895,8 +10900,8 @@ function setBeastMode(on) {
     bmClock = BM.DAY_LEN * 0.40;                 // late morning light
     bmLastSky = -1;
     bmCamIdx = 0;
-    camera.fov = BCAMS[0].fov; camera.near = BCAMS[0].near;
-    camera.updateProjectionMatrix();
+    camera.near = BCAMS[0].near;
+    bmApplyFov();
     document.getElementById('beastCamBtn').textContent = BCAMS[0].icon;
     if (!fig) refreshFig();
     if (fig) fig.visible = false;
@@ -10965,6 +10970,7 @@ let bmTick = 0, bmIntro = 0, bmIntroChirp = 0;
    open door — then the city is yours (choreography by Grok, condensed) */
 function bmIntroCam(dt) {
   bmIntro -= dt;
+  if (bmIntro <= 0) toast('Out through the door — the city is yours!');
   const t = 5.2 - bmIntro;
   if ((t > 1.2 && bmIntroChirp === 0) || (t > 3.9 && bmIntroChirp === 1)) {
     bmChirp(false); bmIntroChirp++;
@@ -10974,7 +10980,7 @@ function bmIntroCam(dt) {
   let lx, ly, lz, px, py, pz;
   if (t < 2) {                                     // the teddy on the pillow
     px = ex; py = ey; pz = ez;
-    lx = 28.5 * P; ly = 9 * PH; lz = 45.5 * P;
+    lx = 33.5 * P; ly = 9 * PH; lz = 47.6 * P;
   } else if (t < 3.6) {                            // pan to the open door
     const f = (t - 2) / 1.6;
     px = ex; py = ey; pz = ez;
@@ -11026,6 +11032,12 @@ function stepBeast(dt) {
 document.getElementById('bBeast').onclick = () => setBeastMode(!beastOn);
 document.getElementById('beastExitBtn').onclick = () => setBeastMode(false);
 document.getElementById('beastCamBtn').onclick = () => bmSetCam(bmCamIdx + 1);
+document.getElementById('beastWideBtn').onclick = () => {
+  bmWide = !bmWide;
+  bmApplyFov();
+  document.getElementById('beastWideBtn').classList.toggle('on', bmWide);
+  toast(bmWide ? 'Wide angle' : 'Normal angle');
+};
 document.getElementById('beastSprintBtn').onclick = () => {
   setSprint(!sprintOn);
   document.getElementById('beastSprintBtn').classList.toggle('on', sprintOn);
