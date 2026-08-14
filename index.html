@@ -7918,8 +7918,12 @@ function carGeo(body, trim, glassOut) {
   // cabin doesn't read as a shoebox
   gbox(G, 5.0, 6.6, 0.5, 0, 13.0, 2.9, glass, 0, 0.42);
   gbox(G, 5.0, 5.4, 0.5, 0, 13.2, -5.2, glass, 0, -0.42);          // rear screen
-  if (glassOut) for (const sx of [-2.45, 2.45])                    // side glazing
-    gbox(G, 0.4, 5.2, 6.6, sx, 13.0, -1.1, glass);
+  if (glassOut) {
+    for (const sx of [-2.45, 2.45]) gbox(G, 0.4, 5.2, 6.6, sx, 13.0, -1.1, glass);   // side glazing
+    for (const sx of [-3.05, 3.05]) gbox(g, 0.55, 1.1, 0.8, sx, 11.2, 2.7, 0x202225);   // mirrors
+    gbox(g, 3, 1, 0.25, 0, 3.1, -7.35, 0xECECE4);                  // number plates
+    gbox(g, 3, 1, 0.25, 0, 3.1, 7.35, 0xECECE4);
+  }
   for (const sx of [-2.4, 2.4]) {
     gbox(g, 0.5, 6.4, 0.5, sx, 13.0, 2.6, body, 0, 0.42);          // A pillars
     gbox(g, 0.5, 6.4, 0.5, sx, 13.2, -5.0, body, 0, -0.42);        // C pillars
@@ -9294,8 +9298,10 @@ function bmTaxiGeo() {
   return bmSedanGeo(0xFAC80A, LC.black, g => {
     gbox(g, 3.4, 2.4, 1.8, 0, 17.4, -1.2, LC.white);           // roof sign
     for (let k = 0; k < 3; k++) gbox(g, 0.8, 1.0, 1.9, -1 + k, 17.4, -1.2, LC.black);
-    for (const sx of [-2.65, 2.65])                            // checker waist band
-      for (let k = 0; k < 5; k++) gbox(g, 0.25, 1.1, 1.3, sx, 8.6, -5 + k * 2.6, LC.black);
+    // full-width thin slabs poking past the sills — reads as checkers side-on
+    // (Codex's fix: the old flank checkers merged into a stripe)
+    for (const kz of [-2.25, -0.75, 0.75, 2.25])
+      gbox(g, 6.3, 1.6, 0.75, 0, 7.2, kz, 0x171717);
   });
 }
 function bmPoliceGeo() {
@@ -9304,6 +9310,7 @@ function bmPoliceGeo() {
     gbox(g, 1.5, 1.6, 1.3, 0.85, 17.2, -1.2, 0x1E5AA8);
     gbox(g, 5.7, 0.5, 5.2, 0, 10.5, 4.3, LC.black);            // black bonnet
     for (const sx of [-2.65, 2.65]) gbox(g, 0.25, 2.2, 9, sx, 7.6, 0, 0x1E5AA8);   // blue flank
+    gbox(g, 0.15, 3.5, 0.15, 1.9, 18.2, -4.6, 0x202225);       // radio antenna
   });
 }
 function bmVanGeo() {
@@ -9328,6 +9335,8 @@ function bmVanGeo() {
   for (let s = 0; s < 4; s++)
     gbox(g, 2.6, 0.7, 1.9, -3.6, 18 - s * 0.001, -5.2 + s * 1.85, s % 2 ? pink : LC.white, 0, 0);
   gbox(g, 5.8, 1.6, 16.6, 0, 18.3, -0.6, cream);               // roof
+  for (const sx of [-3.1, 3.1]) gbox(g, 0.55, 1.1, 1, sx, 13.5, 5.8, 0x202225);   // mirrors
+  gbox(g, 3, 1, 0.25, 0, 3.2, -8.3, 0xECECE4);                 // plate
   gcyl(g, 1.5, 3.4, 0, 21, -1.5, cream, 12);                   // the cone on top
   gcyl(g, 1.0, 2.6, 0, 23.6, -1.5, pink, 10);
   gbox(g, 0.5, 1.4, 0.5, 0, 25.4, -1.5, 0xB40000);             // cherry
@@ -9350,6 +9359,7 @@ function bmBusGeo() {
   gbox(g, 5, 2.4, 0.7, 0, 19.2, 15.45, white);                 // route box
   gbox(g, 3.6, 1.2, 0.75, 0, 19.2, 15.5, 0xFAC80A);
   for (const sx of [-2.2, 2.2]) gbox(g, 1.2, 1.2, 0.5, sx, 5, 15.6, white);   // headlamps
+  for (const sx of [-3.8, 3.8]) gbox(g, 0.6, 1.6, 1, sx, 13, 14.4, 0x202225);  // mirrors
   return { body: gmerge(g), glass: gmerge(gl) };
 }
 function bmTruckGeo() {
@@ -9363,7 +9373,8 @@ function bmTruckGeo() {
   gbox(g, 6.6, 1.4, 6.4, 0, 17.2, 8.2, cab);                   // cab roof
   gbox(g, 6.2, 1.6, 1, 0, 4.4, 11.6, LC.dgrey);                // bumper
   for (const sx of [-2.4, 2.4]) gbox(g, 1.1, 1.1, 0.4, sx, 6, 11.65, LC.white);
-  for (const sx of [-3.6, 3.6]) gbox(g, 0.5, 2.6, 0.5, sx, 14.5, 10.8, LC.dgrey);   // mirrors
+  for (const sx of [-3.6, 3.6]) gbox(g, 0.5, 2.6, 0.5, sx, 14.5, 10.8, 0x202225);   // mirrors
+  gbox(g, 4, 1, 0.25, 0, 3.2, 11.75, 0xECECE4);                // front plate
   gbox(g, 7, 15, 14.4, 0, 11, -4.2, boxc);                     // the box
   gbox(g, 7.15, 3.2, 14.4, 0, 12.5, -4.2, 0xD67923);           // livery band
   gbox(g, 7.15, 0.8, 14.4, 0, 8.3, -4.2, 0xD67923);
@@ -10014,11 +10025,42 @@ function bmSpawnPed() {
     const fig2 = buildFigure(bmRandomAvatar());
     const kid = Math.random() < 0.25;                 // a few short-legged citizens
     if (kid) fig2.scale.setScalar(0.72);
+    const ped = { fig: fig2, x, z, d, latT: lat, state: 'walk', t: 0, decided: null,
+                  v: PED_V * (kid ? 1.05 : 0.8 + Math.random() * 0.4),
+                  phase: Math.random() * 6, yaw: 0 };
+    // street-life accessories (Codex's prop kit)
+    const mk = (sx, sy, sz, px, py, pz, hex, parent) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sx * P, sy * PH, sz * P), matFor(hex));
+      m.position.set(px * P, py * PH, pz * P);
+      m.castShadow = true;
+      parent.add(m);
+      return m;
+    };
+    if (kid && Math.random() < 0.5) {                 // a balloon, tied to the hand
+      const arm = fig2.userData.armR;
+      mk(0.14, 12, 0.14, 0.3, 1.6, 0.4, 0xD8D8D0, arm);
+      mk(1.7, 5, 1.7, 0.3, 10, 0.4, [0xE53935, 0xFAC80A, 0x1E5AA8, 0xE06A9F][(Math.random() * 4) | 0], arm);
+    } else if (!kid && Math.random() < 0.3) {         // a backpack
+      const torso = fig2.children[1];
+      mk(2.4, 4.5, 1.1, 0, 1.2, -0.85, [0x315B78, 0xB40000, 0x00852B][(Math.random() * 3) | 0], torso);
+      mk(2.2, 1.2, 0.3, 0, 3.4, -1.05, 0x25465D, torso);
+    } else if (!kid && Math.random() < 0.3) {         // a shopping bag
+      mk(2, 3, 0.9, 0.2, -4.3, 0.4, [0xD6B34B, 0xE06A9F, 0xF4F4F4][(Math.random() * 3) | 0], fig2.userData.armL);
+    }
+    if (Math.random() < 0.35) {                       // an umbrella, up when it rains
+      const arm = fig2.userData.armL;
+      const umb = new THREE.Group();
+      const sh = mk(0.16, 12, 0.16, 0, 0, 0, 0x55595C, umb);
+      const c1 = mk(6, 1, 6, 0, 5.6, 0, [0x294F78, 0xB40000, 0xFAC80A][(Math.random() * 3) | 0], umb);
+      const c2 = mk(4.2, 1, 4.2, 0, 6.6, 0, c1.material.color.getHex(), umb);
+      umb.position.set(0.3 * P, -1 * PH, 0.4 * P);
+      umb.visible = false;
+      arm.add(umb);
+      ped.umb = umb;
+    }
     fig2.visible = true;
     beastRoot.add(fig2);
-    bmPeds.push({ fig: fig2, x, z, d, latT: lat, state: 'walk', t: 0, decided: null,
-                  v: PED_V * (kid ? 1.05 : 0.8 + Math.random() * 0.4),
-                  phase: Math.random() * 6, yaw: 0 });
+    bmPeds.push(ped);
     return;
   }
 }
@@ -10119,7 +10161,9 @@ function bmStepPeds(dt) {
     const sswing = Math.sin(p.phase) * (moving ? 0.7 : 0);
     p.fig.userData.legL.rotation.x = sswing;
     p.fig.userData.legR.rotation.x = -sswing;
-    p.fig.userData.armL.rotation.x = -sswing * 0.8;
+    const brolly = p.umb && bmRainF > 0.35;
+    if (p.umb) p.umb.visible = brolly;
+    p.fig.userData.armL.rotation.x = brolly ? -2.9 : -sswing * 0.8;   // umbrella held high
     p.fig.userData.armR.rotation.x = sswing * 0.8;
   }
 }
@@ -10246,6 +10290,28 @@ function bmInitAmbient() {
                       Math.sin(az) * Math.cos(el) * 2.6, 0.5 + Math.random()]);
   }
   bmPlane = new THREE.Mesh(bmPlaneGeo(), propMat);
+  {                                                 // the banner it tows: HI MOM!
+    const cv = document.createElement('canvas');
+    cv.width = 256; cv.height = 48;
+    const c2 = cv.getContext('2d');
+    c2.fillStyle = '#F4F4F4'; c2.fillRect(0, 0, 256, 48);
+    c2.strokeStyle = '#B40000'; c2.lineWidth = 5; c2.strokeRect(3, 3, 250, 42);
+    c2.fillStyle = '#B40000';
+    c2.font = '700 30px Outfit, sans-serif';
+    c2.textAlign = 'center'; c2.textBaseline = 'middle';
+    c2.fillText('HI MOM!', 128, 26);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(34 * P, 7 * PH),
+      new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+    banner.rotation.y = Math.PI / 2;
+    banner.position.set(0, -2 * PH, 42 * P);
+    bmPlane.add(banner);
+    const rope = new THREE.Mesh(new THREE.BoxGeometry(0.15 * P, 0.5 * PH, 10 * P),
+      matFor(0x55595C));
+    rope.position.set(0, 1 * PH, 20 * P);
+    bmPlane.add(rope);
+  }
   bmHeli = new THREE.Mesh(bmHeliGeo(), propMat);
   bmHeliRotor = new THREE.Mesh(new THREE.BoxGeometry(30 * P, 0.8 * PH, 2 * P), matFor(0x646464));
   bmHeliRotor.position.y = 6 * PH;
