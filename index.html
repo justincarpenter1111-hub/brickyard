@@ -9933,9 +9933,9 @@ function bmInitAmbient() {
 }
 function bmStepAmbient(dt) {
   const px = play.x / P, pz = play.z / P;
-  // birds: two loose flocks circling near the player
+  // birds: two loose flocks circling near the player — they sit out the rain
   let n = 0, m = 0;
-  for (const flock of bmBirdFlocks) {
+  if (bmRainF < 0.5) for (const flock of bmBirdFlocks) {
     flock.drift += dt * 0.05;
     flock.cx += (px + Math.cos(flock.drift) * 90 - flock.cx) * dt * 0.1;
     flock.cz += (pz + Math.sin(flock.drift) * 90 - flock.cz) * dt * 0.1;
@@ -10027,7 +10027,7 @@ const bmSkyTex = new THREE.CanvasTexture(bmSkyCanvas);
 bmSkyTex.colorSpace = THREE.SRGBColorSpace;
 const _bmCa = new THREE.Color(), _bmCb = new THREE.Color(), _bmCc = new THREE.Color();
 const _bmFog = new THREE.Color();
-let bmNightF = 0, bmLastSky = -1;
+let bmNightF = 0, bmLastSky = -1, bmLastSkyRain = 0;
 function bmSkyAt(t01, slot, into) {
   let k = 1;
   while (BM_SKY[k][0] < t01) k++;
@@ -10041,29 +10041,32 @@ function bmDayNight() {
   const dayF = Math.min(1, Math.max(0, elev * 2.6 + 0.12));
   bmNightF = Math.min(1, Math.max(0, -elev * 2.6 + 0.12));
   const duskF = Math.min(1, Math.max(0, 1 - Math.abs(elev) * 3.5));
-  if (Math.abs(t01 - bmLastSky) > 0.004) {                 // redraw the gradient ~1/s
-    bmLastSky = t01;
+  if (Math.abs(t01 - bmLastSky) > 0.004 || Math.abs(bmRainF - bmLastSkyRain) > 0.04) {
+    bmLastSky = t01; bmLastSkyRain = bmRainF;              // redraw the gradient ~1/s
     const g = bmSkyCanvas.getContext('2d');
     const grad = g.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, '#' + bmSkyAt(t01, 1, _bmCa).getHexString());
-    grad.addColorStop(0.62, '#' + bmSkyAt(t01, 2, _bmCa).getHexString());
-    grad.addColorStop(1, '#' + bmSkyAt(t01, 3, _bmCa).getHexString());
+    const overcast = (slot, grey) =>
+      '#' + bmSkyAt(t01, slot, _bmCa).lerp(_bmCb.setHex(grey), bmRainF * 0.72).getHexString();
+    grad.addColorStop(0, overcast(1, 0x6E7880));
+    grad.addColorStop(0.62, overcast(2, 0x8E99A2));
+    grad.addColorStop(1, overcast(3, 0xA5AEB5));
     g.fillStyle = grad; g.fillRect(0, 0, 1, 256);
     bmSkyTex.needsUpdate = true;
   }
   bmSkyAt(t01, 3, _bmFog);
   scene.fog.color.copy(_bmFog);
-  scene.fog.near = 0.55 - bmNightF * 0.15;
-  scene.fog.far = 1.75 - bmNightF * 0.45;
+  scene.fog.near = (0.55 - bmNightF * 0.15) * (1 - bmRainF * 0.35);
+  scene.fog.far = (1.75 - bmNightF * 0.45) * (1 - bmRainF * 0.35);
+  if (bmRainF > 0.02) scene.fog.color.lerp(_bmCc.setHex(0x8E99A2), bmRainF * 0.55);
   // the sun swings around the player so shadows stay crisp wherever they walk
   const ang = 2 * Math.PI * t01 - Math.PI / 2;
   sun.position.set(play.x + Math.cos(ang) * 1.5, Math.max(0.25, elev * 1.9), play.z + Math.sin(ang) * 1.5 + 0.4);
   sun.target.position.set(play.x, 0, play.z);
-  sun.intensity = 0.22 + dayF * 2.0;
+  sun.intensity = (0.22 + dayF * 2.0) * (1 - bmRainF * 0.55);
   _bmCa.setHex(0xffffff).lerp(_bmCb.setHex(0xffb070), duskF);
   _bmCa.lerp(_bmCb.setHex(0xa8bce8), bmNightF);
   sun.color.copy(_bmCa);
-  hemi.intensity = 0.26 + dayF * 0.9;
+  hemi.intensity = (0.26 + dayF * 0.9) * (1 - bmRainF * 0.25);
   hemi.color.setHex(0xffffff).lerp(_bmCb.setHex(0x7f93c8), bmNightF);
   hemi.groundColor.setHex(0x9da8b0).lerp(_bmCb.setHex(0x141c2e), bmNightF);
   bmGlowMat.opacity = bmNightF;
@@ -10224,11 +10227,59 @@ function bmUpdateCamera() {
                      + Math.max(0, chase.phi - Math.PI / 2) * 0.055, play.z);
 }
 
+/* ---------- weather ----------
+   Showers drift through now and then: a cylinder of instanced rain streaks
+   around the player, the sky pulled darker, the fog drawn in, and the noise
+   bed opened up into a hiss. Everything eases in and out over ~8 seconds.  */
+let bmRain = null, bmRainF = 0, bmRainTarget = 0, bmWeatherAt = 50;
+const bmDrops = [];
+function bmInitWeather() {
+  if (bmRain) return;
+  const geo = new THREE.BoxGeometry(0.22 * P, 3.2 * PH, 0.22 * P);
+  bmRain = new THREE.InstancedMesh(geo,
+    new THREE.MeshBasicMaterial({ color: 0xAFC8DC, transparent: true, opacity: 0.4 }), 420);
+  bmRain.frustumCulled = false;
+  bmRain.count = 0;
+  beastRoot.add(bmRain);
+  for (let k = 0; k < 420; k++)
+    bmDrops.push({ x: (Math.random() - 0.5) * 220, z: (Math.random() - 0.5) * 220,
+                   y: Math.random() * 180, v: 150 + Math.random() * 60 });
+}
+function bmStepWeather(dt) {
+  bmWeatherAt -= dt;
+  if (bmWeatherAt <= 0) {
+    bmRainTarget = bmRainTarget > 0 ? 0 : (Math.random() < 0.45 ? 1 : 0);
+    bmWeatherAt = bmRainTarget > 0 ? 45 + Math.random() * 50 : 70 + Math.random() * 90;
+  }
+  bmRainF += (bmRainTarget - bmRainF) * Math.min(1, dt / 8);
+  if (!bmRain) return;
+  if (bmRainF < 0.02) { bmRain.count = 0; return; }
+  const px = play.x / P, pz = play.z / P;
+  let n = 0;
+  const active = Math.floor(420 * bmRainF);
+  for (let k = 0; k < active; k++) {
+    const dpp = bmDrops[k];
+    dpp.y -= dpp.v * dt;
+    if (dpp.y < 2) {
+      dpp.y = 150 + Math.random() * 40;
+      dpp.x = (Math.random() - 0.5) * 220;
+      dpp.z = (Math.random() - 0.5) * 220;
+    }
+    _bmO.position.set((px + dpp.x) * P, dpp.y * PH, (pz + dpp.z) * P);
+    _bmO.rotation.set(0, 0, 0);
+    _bmO.scale.set(1, 1, 1);
+    _bmO.updateMatrix();
+    bmRain.setMatrixAt(n++, _bmO.matrix);
+  }
+  bmRain.count = n;
+  bmRain.instanceMatrix.needsUpdate = true;
+}
+
 /* ---------- ambient sound ----------
    A tiny procedural soundscape, nothing sampled: a filtered noise bed for
    the city hum, little sine chirps for daytime birds, pulsed trills for the
    crickets after dark. Everything is wrapped so audio can never break play. */
-let bmAC = null, bmACReady = false, bmBedGain = null, bmChirpAt = 0, bmCricketAt = 0;
+let bmAC = null, bmACReady = false, bmBedGain = null, bmBedLP = null, bmChirpAt = 0, bmCricketAt = 0;
 function bmInitAudio() {
   if (bmAC) { try { bmAC.resume(); } catch (e) {} return; }
   try {
@@ -10250,6 +10301,7 @@ function bmInitAudio() {
     src.buffer = buf; src.loop = true;
     const lp = bmAC.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = 320;
+    bmBedLP = lp;
     bmBedGain = bmAC.createGain();
     bmBedGain.gain.value = 0.5;
     src.connect(lp).connect(bmBedGain).connect(master);
@@ -10303,7 +10355,8 @@ function bmStepAudio(dt) {
       const dd = Math.hypot(c.x - play.x / P, c.z - play.z / P);
       if (dd < 90) near += (90 - dd) / 90 * Math.min(1, c.v / 20);
     }
-    const target = 0.28 + Math.min(0.55, near * 0.18) - bmNightF * 0.12;
+    const target = 0.28 + Math.min(0.55, near * 0.18) - bmNightF * 0.12 + bmRainF * 0.55;
+    if (bmBedLP) bmBedLP.frequency.value = 320 + bmRainF * 2400;
     bmBedGain.gain.value += (target - bmBedGain.gain.value) * Math.min(1, dt * 2);
     bmChirpAt -= dt; bmCricketAt -= dt;
     if (bmNightF < 0.4 && bmChirpAt <= 0) { bmChirp(false); bmChirpAt = 2.5 + Math.random() * 6; }
@@ -10374,6 +10427,7 @@ function setBeastMode(on) {
     bmInitCarMeshes();
     bmInitNightLights();
     bmInitAmbient();
+    bmInitWeather();
     bmInitAudio();
     bmBuildSignAtlas();
     bmStreamChunks(99);
@@ -10444,6 +10498,7 @@ function stepBeast(dt) {
   bmStepTraffic(dt);
   bmStepPeds(dt);
   bmStepAmbient(dt);
+  bmStepWeather(dt);
   bmStepAudio(dt);
   bmSyncLights();
   bmDayNight();
@@ -10553,6 +10608,7 @@ window.app = {
     cars: bmCars, signal: bmSignal, peds: bmPeds,
     tick: dt => stepBeast(dt),                 // deterministic sim step for tests
     get audioState() { return bmAC ? bmAC.state : 'none'; },
+    get rainF() { return bmRainF; }, set rain(v) { bmRainTarget = v; bmWeatherAt = 999; },
     get renderInfo() { return renderer.info.render; },
   },
 };
