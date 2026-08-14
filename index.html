@@ -10224,6 +10224,93 @@ function bmUpdateCamera() {
                      + Math.max(0, chase.phi - Math.PI / 2) * 0.055, play.z);
 }
 
+/* ---------- ambient sound ----------
+   A tiny procedural soundscape, nothing sampled: a filtered noise bed for
+   the city hum, little sine chirps for daytime birds, pulsed trills for the
+   crickets after dark. Everything is wrapped so audio can never break play. */
+let bmAC = null, bmACReady = false, bmBedGain = null, bmChirpAt = 0, bmCricketAt = 0;
+function bmInitAudio() {
+  if (bmAC) { try { bmAC.resume(); } catch (e) {} return; }
+  try {
+    bmAC = new (window.AudioContext || window.webkitAudioContext)();
+    const master = bmAC.createGain();
+    master.gain.value = 0.14;
+    master.connect(bmAC.destination);
+    bmAC._master = master;
+    // the bed: looping brown-ish noise through a low-pass
+    const len = bmAC.sampleRate * 2;
+    const buf = bmAC.createBuffer(1, len, bmAC.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let k = 0; k < len; k++) {
+      last = (last + (Math.random() * 2 - 1) * 0.02) * 0.998;
+      d[k] = last * 3.5;
+    }
+    const src = bmAC.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const lp = bmAC.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 320;
+    bmBedGain = bmAC.createGain();
+    bmBedGain.gain.value = 0.5;
+    src.connect(lp).connect(bmBedGain).connect(master);
+    src.start();
+    bmACReady = true;
+  } catch (e) { bmAC = null; }
+}
+function bmChirp(nighty) {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    const pan = bmAC.createStereoPanner();
+    pan.pan.value = Math.random() * 1.6 - 0.8;
+    const g = bmAC.createGain();
+    g.gain.value = 0;
+    g.connect(pan).connect(bmAC._master);
+    const o = bmAC.createOscillator();
+    o.type = 'sine';
+    o.connect(g);
+    if (nighty) {                                  // cricket: a fast quiet trill
+      o.frequency.value = 3800 + Math.random() * 600;
+      const n = 5 + (Math.random() * 4 | 0);
+      for (let k = 0; k < n; k++) {
+        const tt = t0 + k * 0.07;
+        g.gain.setValueAtTime(0, tt);
+        g.gain.linearRampToValueAtTime(0.05, tt + 0.015);
+        g.gain.linearRampToValueAtTime(0, tt + 0.05);
+      }
+      o.start(t0); o.stop(t0 + n * 0.07 + 0.1);
+    } else {                                       // bird: two or three swoops
+      const n = 2 + (Math.random() * 2 | 0);
+      for (let k = 0; k < n; k++) {
+        const tt = t0 + k * (0.16 + Math.random() * 0.08);
+        const f0 = 2200 + Math.random() * 1400;
+        o.frequency.setValueAtTime(f0, tt);
+        o.frequency.exponentialRampToValueAtTime(f0 * (1.25 + Math.random() * 0.3), tt + 0.09);
+        g.gain.setValueAtTime(0, tt);
+        g.gain.linearRampToValueAtTime(0.09, tt + 0.02);
+        g.gain.linearRampToValueAtTime(0, tt + 0.13);
+      }
+      o.start(t0); o.stop(t0 + n * 0.26 + 0.1);
+    }
+  } catch (e) {}
+}
+function bmStepAudio(dt) {
+  if (!bmACReady) return;
+  try {
+    // the hum leans on how much traffic is near
+    let near = 0;
+    for (const c of bmCars) {
+      const dd = Math.hypot(c.x - play.x / P, c.z - play.z / P);
+      if (dd < 90) near += (90 - dd) / 90 * Math.min(1, c.v / 20);
+    }
+    const target = 0.28 + Math.min(0.55, near * 0.18) - bmNightF * 0.12;
+    bmBedGain.gain.value += (target - bmBedGain.gain.value) * Math.min(1, dt * 2);
+    bmChirpAt -= dt; bmCricketAt -= dt;
+    if (bmNightF < 0.4 && bmChirpAt <= 0) { bmChirp(false); bmChirpAt = 2.5 + Math.random() * 6; }
+    if (bmNightF > 0.6 && bmCricketAt <= 0) { bmChirp(true); bmCricketAt = 1.6 + Math.random() * 4; }
+  } catch (e) {}
+}
+
 /* ---------- performance probe (for the work loop's test step) ---------- */
 const bmFrameMs = [];
 function bmStats(dt) {
@@ -10287,6 +10374,7 @@ function setBeastMode(on) {
     bmInitCarMeshes();
     bmInitNightLights();
     bmInitAmbient();
+    bmInitAudio();
     bmBuildSignAtlas();
     bmStreamChunks(99);
     bmSyncProps();
@@ -10309,6 +10397,7 @@ function setBeastMode(on) {
     bmRedInst.count = bmGrnInst.count = 0;
     while (bmPeds.length) bmDropPed(0);
     if (bmHeadInst) { bmHeadInst.count = 0; bmFlashRed.count = 0; bmFlashBlue.count = 0; }
+    if (bmAC) { try { bmAC.suspend(); } catch (e) {} }
     if (bmBirdUp) { bmBirdUp.count = bmBirdDn.count = 0; }
     if (bmCloudInst) bmCloudInst.count = 0;
     if (bmPlane) bmPlane.visible = false;
@@ -10355,6 +10444,7 @@ function stepBeast(dt) {
   bmStepTraffic(dt);
   bmStepPeds(dt);
   bmStepAmbient(dt);
+  bmStepAudio(dt);
   bmSyncLights();
   bmDayNight();
   bmUpdateLamps();
@@ -10462,6 +10552,7 @@ window.app = {
     ground: bmGroundAt, blocked: bmBlocked, stream: bmStreamChunks,
     cars: bmCars, signal: bmSignal, peds: bmPeds,
     tick: dt => stepBeast(dt),                 // deterministic sim step for tests
+    get audioState() { return bmAC ? bmAC.state : 'none'; },
     get renderInfo() { return renderer.info.render; },
   },
 };
