@@ -8669,9 +8669,14 @@ function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz, district
   } else {                                                            // flat roof + parapet
     // the slab stays inside the parapet ring — overlapping them speckled every roofline
     gbox(g, sxz - 2.4, 1.5, szz - 2.4, cx, y + 2.2, cz, 0x646464);
+    bmStuds(g, bx0 + 2, bz0 + 2, bx1 - 2, bz1 - 2, y + 2.95, 0x6E6E6E, 4);   // studded roof
     for (const [ex, ez, sw, sd] of [[cx, bz0 + 0.5, sxz, 1], [cx, bz1 - 0.5, sxz, 1],
                                     [bx0 + 0.5, cz, 1, szz - 2], [bx1 - 0.5, cz, 1, szz - 2]])
       gbox(g, sw, 3.5, sd, ex, y + 3.0, ez, wall);
+    bmStuds(g, bx0, bz0, bx1, bz0 + 1, y + 4.75, wall, 4);                   // parapet rims
+    bmStuds(g, bx0, bz1 - 1, bx1, bz1, y + 4.75, wall, 4);
+    bmStuds(g, bx0, bz0 + 2, bx0 + 1, bz1 - 2, y + 4.75, wall, 4);
+    bmStuds(g, bx1 - 1, bz0 + 2, bx1, bz1 - 2, y + 4.75, wall, 4);
     if (kind === 'office') {                                          // rooftop plant
       gbox(g, 4, 4, 3, cx - 3, y + 4.4, cz - 2, 0x969696);
       gbox(g, 2.5, 3, 2.5, cx + 4, y + 4, cz + 3, 0x646464);
@@ -8681,6 +8686,13 @@ function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz, district
 }
 
 function bmProp(chunk, t, x, z, yaw, y) { chunk.props.push({ t, x, z, yaw: yaw || 0, y: y || 0 }); }
+
+/* a field of studs — what makes a surface read as LEGO instead of plastic */
+function bmStuds(g, xa, za, xb, zb, y, col, step) {
+  for (let sx = xa + step / 2; sx < xb; sx += step)
+    for (let sz = za + step / 2; sz < zb; sz += step)
+      gcyl(g, 0.3, 1.0, sx, y + 0.5, sz, col, 6);
+}
 
 /* the clock tower: a civic landmark you can steer by from three blocks out */
 function bmClockTower(g, glow, solids, R, px0, pz0) {
@@ -8764,15 +8776,15 @@ function bmGenChunk(i, j) {
   for (const [dx, dz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
     const alongZ = dz !== 0;                                          // arm runs along z
     const armC = alongZ ? dz : dx;
-    // zebra: stripes elongated along travel, marching across the road
+    // zebra: set back clear of the corner radius, stripes along the travel line
     for (let s = -3; s <= 3; s++) {
       const across = s * 2.3;
-      if (alongZ) gbox(g, 1.5, 0.3, 5, x0 + across, MARK, z0 + armC * 11.5, 0xF4F4F4);
-      else gbox(g, 5, 0.3, 1.5, x0 + armC * 11.5, MARK, z0 + across, 0xF4F4F4);
+      if (alongZ) gbox(g, 1.5, 0.3, 6, x0 + across, MARK, z0 + armC * 18.5, 0xF4F4F4);
+      else gbox(g, 6, 0.3, 1.5, x0 + armC * 18.5, MARK, z0 + across, 0xF4F4F4);
     }
-    // stop line across the incoming lane only (right-hand traffic)
-    if (alongZ) gbox(g, 7, 0.32, 1.2, x0 + (dz > 0 ? -4 : 4), MARK, z0 + armC * 15.2, 0xF4F4F4);
-    else gbox(g, 1.2, 0.32, 7, x0 + armC * 15.2, MARK, z0 + (dx > 0 ? 4 : -4), 0xF4F4F4);
+    // stop line across the incoming lane, behind the crossing
+    if (alongZ) gbox(g, 7, 0.32, 1.2, x0 + (dz > 0 ? -4 : 4), MARK, z0 + armC * 23.2, 0xF4F4F4);
+    else gbox(g, 1.2, 0.32, 7, x0 + armC * 23.2, MARK, z0 + (dx > 0 ? 4 : -4), 0xF4F4F4);
   }
 
   /* parking bays: kerb-parallel, marked, only mid-block. The chunk owns the
@@ -8835,6 +8847,8 @@ function bmGenChunk(i, j) {
     };
     A(0, 0, 10, 12, 0.8, 22, 10, 0x646464);               // back wall
     A(0, 0, 11, 1.4, 5.5, 19, 17, 0xF4F4F4);              // roof
+    for (const ko of [-3.3, 0, 3.3])                      // studs on the shelter roof
+      gcyl(g, 0.3, 1, bs.alongZ ? latC : along + ko, 18.2, bs.alongZ ? along + ko : latC, 0xF4F4F4, 6);
     A(-4.5, 0, 0.8, 12, 0.8, 15.5, 10, 0x646464);         // posts
     A(4.5, 0, 0.8, 12, 0.8, 15.5, 10, 0x646464);
     A(0, 0, 5, 2, 1.6, 21, 6.5, 0xB40000);                // bench
@@ -8916,6 +8930,10 @@ function bmGenChunk(i, j) {
       gbox(g, 0.8, 2.2, 0.8, x0 + fx, 5.2, z0 + fz,
            [0xB40000, 0xFAC80A, 0x1E5AA8, 0xE06A9F, 0xF4F4F4][(R() * 5) | 0]);
     }
+    // studded baseplate grass, path bands left smooth
+    for (const [qa, qb] of [[26, 51], [61, 86]])
+      for (const [ra, rb] of [[26, 51], [61, 86]])
+        bmStuds(g, x0 + qa, z0 + ra, x0 + qb, z0 + rb, 5.2, 0x27913C, 10);
     // low hedge ring with gaps at the path mouths
     for (const [hx, hz, sw, sd] of [[56 - 17.5, 25, 29, 1.4], [56 + 17.5, 25, 29, 1.4],
                                     [56 - 17.5, 87, 29, 1.4], [56 + 17.5, 87, 29, 1.4],
@@ -9307,7 +9325,7 @@ function bmSpawnCar() {
     if (tooClose) continue;
     const t = bmPickVeh(BM_TRAFFIC_MIX, Math.random());
     const len = BM_VEHICLES[t].len;
-    bmCars.push({ t, len, w: BM_VEHICLES[t].w, stopS: 16 + len / 2, heavy: len >= 20,
+    bmCars.push({ t, len, w: BM_VEHICLES[t].w, stopS: 24 + len / 2, heavy: len >= 20,
                   x, z, d, v: CAR_V * (0.75 + Math.random() * 0.25),
                   max: CAR_V * (len >= 20 ? 0.72 : 0.8 + Math.random() * 0.25), act: 'cruise',
                   decided: null, turn: 0, arc: null, yaw: Math.atan2(dx, dz) });
@@ -9664,7 +9682,7 @@ function bmEnterCar() {
   if (ci >= 0) chunk.solids.splice(ci, 1);
   bmDrive = { t: p.t, len: BM_VEHICLES[p.t].len, x: p.x, z: p.z, yaw: p.yaw, v: 0, prevCam: bmCamIdx };
   bmNearCar = null;
-  if (BCAMS[bmCamIdx].id !== 'fpv' && BCAMS[bmCamIdx].id !== 'chase') bmSetCam(1);
+  if (BCAMS[bmCamIdx].id !== 'chase') bmSetCam(1);   // always start seeing your car
   toast('Driving — the button gets you out');
 }
 function bmExitCar() {
@@ -9817,7 +9835,7 @@ function bmStepPeds(dt) {
         if (p.decided !== L && s < 26) {
           p.decided = L;
           const r = Math.random();
-          if (r < 0.4) { p.state = 'toCross'; p.latT = Math.sign(lat) * 11.5; }
+          if (r < 0.4) { p.state = 'toCross'; p.latT = Math.sign(lat) * 18.5; }
           else p.turnAt = 16 + Math.random() * 5;
         } else if (p.decided === L && p.turnAt && s <= p.turnAt) {
           // round the corner onto the cross street
@@ -10208,14 +10226,17 @@ function bmUpdateCamera() {
     chase.phi = c.id === 'chase' ? 1.18 : c.id === 'shoulder' ? 1.28 : 0.95;
     chase.dist = c.id === 'chase' ? 0.17 : c.id === 'shoulder' ? 0.10 : 0.38;
   } else if (bmDrive && c.id === 'fpv') {
-    // bonnet cam: the glass is solid brick, so the eye rides above the bonnet
+    // hood cam: the eye rides just above the roof's leading edge so the bonnet
+    // stays in frame — without a piece of your own car, driving feels like
+    // floating (that was the complaint)
     chase.theta = bmDrive.yaw + Math.PI;
-    chase.phi = Math.min(Math.PI / 2 + 0.35, Math.max(Math.PI / 2 - 0.5, chase.phi));
+    chase.phi = Math.min(Math.PI / 2 + 0.30, Math.max(Math.PI / 2 - 0.45, chase.phi));
     const fx = Math.sin(bmDrive.yaw), fz = Math.cos(bmDrive.yaw);
-    const ex = play.x + fx * 8.2 * P, ez = play.z + fz * 8.2 * P;
-    const ey = play.y + 13 * PH;
+    const tall = bmDrive.len >= 24 ? 5 : bmDrive.len >= 18 ? 3 : 0;   // vans/trucks/buses sit higher
+    const ex = play.x + fx * 2.2 * P, ez = play.z + fz * 2.2 * P;
+    const ey = play.y + (18.5 + tall) * PH;
     if (fig) fig.visible = false;
-    const pitch = Math.PI / 2 - chase.phi, cp = Math.cos(pitch);
+    const pitch = Math.PI / 2 - chase.phi - 0.10, cp = Math.cos(pitch);   // a hint of downward bias
     camera.position.set(ex, ey, ez);
     camera.lookAt(ex + fx * cp, ey + Math.sin(pitch), ez + fz * cp);
     return;
