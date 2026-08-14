@@ -8369,9 +8369,20 @@ const BM_GLASS = 0x8FB5C9, BM_GLASS_N = 0x39525F;
 const BM_ASPHALT = 0x53575B, BM_PATHCOL = 0x969696, BM_KERB = 0xC8C8C8;
 const BM_GRASS = 0x2f9e44, BM_LOT = 0xB5AF9F;
 
+/* districts: a smooth field decides where downtown's towers cluster, where
+   the low suburbs sprawl, and where the parks fall — a city of one height is
+   the classic procedural giveaway */
+function bmDistrictF(i, j) {
+  return 0.5 + 0.25 * Math.sin(i * 0.53 + 2.1) + 0.25 * Math.sin(j * 0.47 + 0.7);
+}
+function bmDistrict(i, j) {
+  const f = bmDistrictF(i, j);
+  return f > 0.68 ? 'downtown' : f < 0.34 ? 'suburb' : 'mid';
+}
 function bmChunkType(i, j) {                         // what lives on block (i,j)?
   const r = rng(bmSeed(i * 3 + 11, j * 3 - 7))();
-  if (r < 0.16) return 'park';
+  const d = bmDistrict(i, j);
+  if (r < (d === 'suburb' ? 0.24 : d === 'downtown' ? 0.07 : 0.15)) return 'park';
   return 'city';
 }
 
@@ -8497,9 +8508,13 @@ function bmOpening(g, glow, glass, face, wallAt, a, y, w, h, frameCol, lit) {
 }
 
 /* a modular-standard corner building filling one 32x32 parcel */
-function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz) {
+function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz, district) {
   const kindRoll = R();
-  const kind = kindRoll < 0.32 ? 'shop' : kindRoll < 0.62 ? 'house' : kindRoll < 0.88 ? 'office' : 'garden';
+  const kind = district === 'downtown'
+    ? (kindRoll < 0.45 ? 'office' : kindRoll < 0.80 ? 'shop' : kindRoll < 0.90 ? 'house' : 'garden')
+    : district === 'suburb'
+    ? (kindRoll < 0.50 ? 'house' : kindRoll < 0.68 ? 'shop' : kindRoll < 0.78 ? 'office' : 'garden')
+    : (kindRoll < 0.32 ? 'shop' : kindRoll < 0.62 ? 'house' : kindRoll < 0.88 ? 'office' : 'garden');
   const faceX = qx === 0 ? 0 : 1, faceZ = qz === 0 ? 2 : 3;   // which sides meet the street
   if (kind === 'garden') {          // a gap in the street wall: pocket garden
     const cx = px0 + 16, cz = pz0 + 16;
@@ -8522,7 +8537,9 @@ function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz) {
   const wall = BM_WALLS[(R() * BM_WALLS.length) | 0];
   const trim = BM_TRIMS[(R() * BM_TRIMS.length) | 0];
   const roofC = BM_ROOFS[(R() * BM_ROOFS.length) | 0];
-  const floors = kind === 'house' ? 2 : kind === 'shop' ? 2 + ((R() * 2) | 0) : 3 + ((R() * 3) | 0);
+  const floors = kind === 'house' ? (district === 'suburb' && R() < 0.45 ? 1 : 2)
+               : kind === 'shop' ? 2 + ((R() * 2) | 0)
+               : district === 'downtown' ? 4 + ((R() * 5) | 0) : 3 + ((R() * 3) | 0);
   const feFace = (kind === 'office' && floors >= 3 && R() < 0.7) ? (R() < 0.5 ? faceX : faceZ) : -1;
   const GF = 26, UF = 21;                                             // plates per floor
   const cx = (bx0 + bx1) / 2, cz = (bz0 + bz1) / 2;
@@ -8654,6 +8671,50 @@ function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz) {
 }
 
 function bmProp(chunk, t, x, z, yaw, y) { chunk.props.push({ t, x, z, yaw: yaw || 0, y: y || 0 }); }
+
+/* the clock tower: a civic landmark you can steer by from three blocks out */
+function bmClockTower(g, glow, solids, R, px0, pz0) {
+  const cx = px0 + 16, cz = pz0 + 16;
+  const stone = 0xC8C8C8, trim2 = 0x897D62;
+  gbox(g, 22, 8, 22, cx, 8, cz, trim2);                              // plinth
+  let y = 12;
+  for (let f = 0; f < 3; f++) {                                      // stone base floors
+    gbox(g, 18, 22, 18, cx, y + 11, cz, stone);
+    for (const [wx, wz, alongX] of [[cx, pz0 + 7, true], [cx, pz0 + 25, true],
+                                    [px0 + 7, cz, false], [px0 + 25, cz, false]]) {
+      gbox(g, alongX ? 3 : 0.8, 12, alongX ? 0.8 : 3, wx, y + 10, wz, 0x10161C);
+      if (R() < 0.5) gbox(glow, alongX ? 3.4 : 0.5, 13, alongX ? 0.5 : 3.4, wx, y + 10, wz, 0xFFDf9E);
+    }
+    gbox(g, 19, 1.4, 19, cx, y + 22.2, cz, trim2);
+    y += 23;
+  }
+  gbox(g, 14, 40, 14, cx, y + 20, cz, stone);                        // the shaft
+  y += 40;
+  gbox(g, 17, 3, 17, cx, y + 1.5, cz, trim2);                        // clock stage cornice
+  y += 3;
+  gbox(g, 16, 16, 16, cx, y + 8, cz, stone);                         // clock stage
+  for (const [fx2, fz2, alongX] of [[cx, cz - 8, true], [cx, cz + 8, true],
+                                    [cx - 8, cz, false], [cx + 8, cz, false]]) {
+    const out2 = Math.sign(alongX ? fz2 - cz : fx2 - cx) * 0.35;
+    gbox(g, alongX ? 9 : 0.7, 22, alongX ? 0.7 : 9,
+         alongX ? fx2 : fx2 + out2, y + 8, alongX ? fz2 + out2 : fz2, 0xF4F4F4);   // face
+    // hands: an hour and a minute box, and a black centre pip
+    gbox(g, alongX ? 0.9 : 1.0, 7, alongX ? 1.0 : 0.9,
+         alongX ? fx2 : fx2 + out2 * 2, y + 9.6, alongX ? fz2 + out2 * 2 : fz2, 0x1B2A34);
+    gbox(g, alongX ? 3.4 : 1.1, 2, alongX ? 1.1 : 3.4,
+         alongX ? fx2 + 1.4 : fx2 + out2 * 2, y + 8, alongX ? fz2 + out2 * 2 : fz2 + 1.4, 0x1B2A34);
+    gbox(glow, alongX ? 9.4 : 0.4, 23, alongX ? 0.4 : 9.4,
+         alongX ? fx2 : fx2 + out2 * 2.4, y + 8, alongX ? fz2 + out2 * 2.4 : fz2, 0xFFEDC0);
+  }
+  y += 16;
+  let span = 18;                                                     // stepped gold crown
+  while (span > 3) {
+    gbox(g, span, 3, span, cx, y + 1.5, cz, 0xFCAC00);
+    span -= 4; y += 3;
+  }
+  gbox(g, 1.2, 8, 1.2, cx, y + 4, cz, 0xFCAC00);                     // finial
+  solids.push([px0 + 5, px0 + 27, pz0 + 5, pz0 + 27, y + 8, 0]);
+}
 
 /* ---------- generate one chunk: [i*112,(i+1)*112) squared ---------- */
 function bmGenChunk(i, j) {
@@ -8793,9 +8854,15 @@ function bmGenChunk(i, j) {
       solids.push([x0 + hx - sw / 2, x0 + hx + sw / 2, z0 + hz - sd / 2, z0 + hz + sd / 2, 9, 0]);
     }
   } else {
-    // four modular-standard parcels, every one a street corner
-    for (const qx of [0, 1]) for (const qz of [0, 1])
-      bmBuilding(g, glow, glass, signs, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, qx, qz);
+    // four modular-standard parcels, every one a street corner. Rarely, one
+    // parcel gives way to a clock tower — a landmark to steer by.
+    const district = bmDistrict(i, j);
+    const towerAt = ((bmSeed(i, j) >>> 8) % 19) === 0 ? ((bmSeed(i, j) >>> 4) & 3) : -1;
+    let q = 0;
+    for (const qx of [0, 1]) for (const qz of [0, 1]) {
+      if (q++ === towerAt) bmClockTower(g, glow, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32);
+      else bmBuilding(g, glow, glass, signs, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, qx, qz, district);
+    }
     // street trees hug the kerb line, clear of the walking line — face-first
     // into a canopy was the single most repeatable immersion breaker
     for (const bs of baySides) {
@@ -9263,12 +9330,13 @@ function bmStepTraffic(dt) {
     let want = car.max;
     // red light (or a left turn waiting its gap): stop with the nose at the line
     let holdAt = null;
-    if (s > 0 && s < 60 && (!green || (amber && s > 12)) && s > car.stopS - 6) holdAt = car.stopS;
+    car.holdWhy = null;
+    if (s > 0 && s < 60 && (!green || (amber && s > 12)) && s > car.stopS - 6) { holdAt = car.stopS; car.holdWhy = green ? 'amber' : 'red'; }
     // and even on a fresh green, wait for the box to empty of cross traffic
     if (green && holdAt == null && s > 12 && s <= car.stopS + 6) {
       for (const o of bmCars) {
         if (o === car || (o.d + car.d) % 2 === 0) continue;      // only cross-axis traffic
-        if (Math.abs(o.x - ix) < 14 && Math.abs(o.z - iz) < 14) { holdAt = car.stopS; break; }
+        if (Math.abs(o.x - ix) < 14 && Math.abs(o.z - iz) < 14) { holdAt = car.stopS; car.holdWhy = 'box'; break; }
       }
     }
     // never enter the box unless the exit lane has room to receive us
@@ -9283,7 +9351,7 @@ function bmStepTraffic(dt) {
         const a2 = (o.x - exX) * exd + (o.z - exZ) * ezd;
         const lat2 = Math.abs((o.x - exX) * ezd - (o.z - exZ) * exd);
         if (lat2 < 5 && a2 > -o.len / 2 && a2 < car.len + o.len / 2 + 5 && o.v < 6) {
-          holdAt = car.stopS; break;
+          holdAt = car.stopS; car.holdWhy = 'exit'; break;
         }
       }
     }
@@ -9298,11 +9366,20 @@ function bmStepTraffic(dt) {
         // defer only to an opposite left-turner actually at the box (or moving
         // toward it) — deferring to one buried in a queue held whole streets
         if (oLeft) {
-          if ((os < 40 || o.v > 3) && car.d > o.d && (car.greenWait || 0) < 6) { holdAt = car.stopS; break; }
+          if ((os < 40 || o.v > 3) && car.d > o.d && (car.greenWait || 0) < 6) { holdAt = car.stopS; car.holdWhy = 'oleft'; break; }
         }
         // moving oncoming traffic, or a stopped one at the line about to launch
-        // on our shared green — both cross the left turn's path
-        else if (o.v > 3 || os < 35) { holdAt = car.stopS; break; }
+        // on our shared green — both cross the left turn's path. But an oncoming
+        // car that stays parked through our whole green is itself wedged in a
+        // queue; after five patient seconds we stop waiting for it.
+        else if ((o.v > 3 || os < 35) && !((car.greenWait || 0) > 5 && o.v < 2)) {
+          // after a couple of patient seconds, do what real drivers do: roll
+          // into the box and finish the turn on the gap when the light flips.
+          // The commitment is sticky — greenWait resets while rolling forward.
+          if ((car.greenWait || 0) > 2) car.boxWait = true;
+          holdAt = car.boxWait ? 11 + Math.max(0, (car.len - 15) / 2) : car.stopS;
+          car.holdWhy = 'onc'; break;
+        }
       }
     }
     if (holdAt != null && s > holdAt - 1) {
@@ -9318,6 +9395,7 @@ function bmStepTraffic(dt) {
       const room = clear - 3.5;
       want = room <= 0 ? 0 : Math.min(want, Math.sqrt(Math.max(0, 2 * CAR_BRK * room)) * 0.7);
     }
+    car.dbgWant = want; car.dbgClear = clear; car.dbgS = s;
     // count time spent parked at the line on a green — the anti-starvation clock
     if (green && car.v < 1 && s > car.stopS - 3 && s < car.stopS + 8)
       car.greenWait = (car.greenWait || 0) + dt;
@@ -9339,11 +9417,12 @@ function bmStepTraffic(dt) {
       const exitZ = left ? iz + 4 * dz - 8 * rz : iz - 4 * dz + 8 * rz;
       // place the car exactly at the arc mouth so the sweep starts clean
       car.x = ix - 8 * dx + 4 * rx; car.z = iz - 8 * dz + 4 * rz;
+      car.boxWait = false;
       car.act = 'arc';
       car.arc = { a: 0, r, left, cx, cz, exitX, exitZ, toDir,
                   fx: dx, fz: dz, rvx: rx, rvz: rz };
     }
-    if (s2 < -8) car.decided = null;         // through and clear: free to decide again
+    if (s2 < -8) { car.decided = null; car.boxWait = false; }   // through and clear
   }
   // draw: traffic + every parked car + the one being driven, body and glass
   const counts = new Map();
@@ -9655,6 +9734,8 @@ function bmCloudGeo() {
   return gmerge(g);
 }
 let bmPlane = null, bmHeli = null, bmHeliRotor = null, bmAir = null, bmAirNext = 20;
+let bmStars = null;
+const bmStarField = [];
 function bmPlaneGeo() {
   const g = [];
   gbox(g, 4, 12, 30, 0, 0, 0, 0xF4F4F4);                 // fuselage
@@ -9694,6 +9775,17 @@ function bmInitAmbient() {
   for (let c = 0; c < 12; c++)
     bmClouds.push({ x: (Math.random() - 0.5) * 900, z: (Math.random() - 0.5) * 900,
                     h: 260 + Math.random() * 120, s: 0.8 + Math.random() * 1.6 });
+  // stars: a dome of far points that rides along with the player at night
+  bmStars = new THREE.InstancedMesh(new THREE.BoxGeometry(0.8 * P, 0.8 * P, 0.8 * P),
+    new THREE.MeshBasicMaterial({ color: 0xEAF2FF, fog: false }), 140);
+  bmStars.frustumCulled = false;
+  bmStars.visible = false;
+  beastRoot.add(bmStars);
+  for (let s = 0; s < 140; s++) {
+    const az = Math.random() * Math.PI * 2, el = 0.18 + Math.random() * 1.3;
+    bmStarField.push([Math.cos(az) * Math.cos(el) * 2.6, Math.sin(el) * 2.6,
+                      Math.sin(az) * Math.cos(el) * 2.6, 0.5 + Math.random()]);
+  }
   bmPlane = new THREE.Mesh(bmPlaneGeo(), propMat);
   bmHeli = new THREE.Mesh(bmHeliGeo(), propMat);
   bmHeliRotor = new THREE.Mesh(new THREE.BoxGeometry(30 * P, 0.8 * PH, 2 * P), matFor(0x646464));
@@ -9740,6 +9832,20 @@ function bmStepAmbient(dt) {
   }
   bmCloudInst.count = cn;
   bmCloudInst.instanceMatrix.needsUpdate = true;
+  // stars fade in with the night, pinned to the sky over the player
+  bmStars.visible = bmNightF > 0.25;
+  if (bmStars.visible) {
+    let sn = 0;
+    for (const [sx, sy, sz, sc] of bmStarField) {
+      _bmO.position.set(play.x + sx, sy, play.z + sz);
+      _bmO.rotation.set(0, 0, 0);
+      _bmO.scale.setScalar(sc);
+      _bmO.updateMatrix();
+      bmStars.setMatrixAt(sn++, _bmO.matrix);
+    }
+    bmStars.count = sn;
+    bmStars.instanceMatrix.needsUpdate = true;
+  }
   // the occasional aircraft, straight over the city
   bmAirNext -= dt;
   if (!bmAir && bmAirNext <= 0) {
