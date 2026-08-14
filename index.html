@@ -7885,9 +7885,12 @@ const CAR = { W: 6, L: 14, WB: 4.0, WR: 1.9, AX: 4.75,
               SEAT_Y: 5, SEAT_Z: -1.5, WHEEL_Y: 8.0, WHEEL_Z: 0.15 };
 // the carriage's box bench: centre 5.0, 3 plates deep, so its top is 6.5
 const CART_SEAT = { y: 6.5, z: 2.4 };
-function carGeo(body, trim) {
+function carGeo(body, trim, glassOut) {
+  // glassOut: Beast Mode passes an array here and the glazing is emitted into
+  // it instead, so the panes can be drawn with a real transparent material.
   const g = [], { W, WB, WR, AX, SEAT_Y, SEAT_Z, WHEEL_Y, WHEEL_Z } = CAR;
   const glass = 0x9DC3D4, dark = LC.dgrey;
+  const G = glassOut || g;
   for (const sz of [-WB, WB]) for (const sx of [-2.1, 2.1]) {      // front is +z
     gcyl(g, WR, 1.75, sx, AX, sz, LC.black, 16, Math.PI / 2, Math.PI / 2);
     gcyl(g, WR * 0.55, 1.8, sx, AX, sz, LC.lgrey, 12, Math.PI / 2, Math.PI / 2);
@@ -7912,8 +7915,10 @@ function carGeo(body, trim) {
   }
   // greenhouse: raked screen, four pillars, roof — the screen leans back so the
   // cabin doesn't read as a shoebox
-  gbox(g, 5.0, 6.6, 0.5, 0, 13.0, 2.9, glass, 0, 0.42);
-  gbox(g, 5.0, 5.4, 0.5, 0, 13.2, -5.2, glass, 0, -0.42);          // rear screen
+  gbox(G, 5.0, 6.6, 0.5, 0, 13.0, 2.9, glass, 0, 0.42);
+  gbox(G, 5.0, 5.4, 0.5, 0, 13.2, -5.2, glass, 0, -0.42);          // rear screen
+  if (glassOut) for (const sx of [-2.45, 2.45])                    // side glazing
+    gbox(G, 0.4, 5.2, 6.6, sx, 13.0, -1.1, glass);
   for (const sx of [-2.4, 2.4]) {
     gbox(g, 0.5, 6.4, 0.5, sx, 13.0, 2.6, body, 0, 0.42);          // A pillars
     gbox(g, 0.5, 6.4, 0.5, sx, 13.2, -5.0, body, 0, -0.42);        // C pillars
@@ -8550,7 +8555,7 @@ function bmGenChunk(i, j) {
 
   /* parking bays: kerb-parallel, marked, only mid-block. The chunk owns the
      +side of its west/south street and the -side of its east/north street. */
-  chunk.bays = [];
+  chunk.parked = [];
   const baySides = [
     { alongZ: true,  line: x0,            side: 1,  yaw: 0 },            // west street, east kerb: traffic +z
     { alongZ: true,  line: x0 + BM.PITCH, side: -1, yaw: Math.PI },      // east street, west kerb: traffic -z
@@ -8567,12 +8572,12 @@ function bmGenChunk(i, j) {
         else gbox(g, 0.8, 0.3, 6, along + e, MARK, lat, 0xF4F4F4);
       }
       if (R() < 0.45) {
-        const t = ['prop_car_red', 'prop_car_blue', 'prop_car_yellow', 'prop_car_black'][(R() * 4) | 0];
+        const t = bmPickVeh(BM_PARK_MIX, R());
+        const half = BM_VEHICLES[t].len / 2 + 0.5;
         const cxp = bs.alongZ ? lat : along, czp = bs.alongZ ? along : lat;
-        bmProp(chunk, t, cxp, czp, bs.alongZ ? bs.yaw : bs.yaw, 2);
-        solids.push(bs.alongZ ? [cxp - 3, cxp + 3, czp - 7.5, czp + 7.5, 17, 0]
-                              : [cxp - 7.5, cxp + 7.5, czp - 3, czp + 3, 17, 0]);
-        chunk.bays.push({ x: cxp, z: czp });
+        chunk.parked.push({ t, x: cxp, z: czp, yaw: bs.yaw, y: 2 });
+        solids.push(bs.alongZ ? [cxp - 3.2, cxp + 3.2, czp - half, czp + half, 17, 0]
+                              : [cxp - half, cxp + half, czp - 3.2, czp + 3.2, 17, 0]);
       }
     }
   }
@@ -8755,12 +8760,12 @@ function bmBlocked(x, z, feetY, climb = CLIMB, r = FIG_R) {
     }
   }
   // moving traffic is solid too — you bump off a car, you don't ghost through it
-  if (feetY < 19 * PH) for (const c of bmCars) {
+  if (feetY < 22 * PH) for (const c of bmCars) {
     const ddx = sx - c.x, ddz = sz - c.z;
-    if (ddx * ddx + ddz * ddz > 400) continue;
+    if (ddx * ddx + ddz * ddz > 900) continue;
     const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
     const a = ddx * fx + ddz * fz, lat = ddx * fz - ddz * fx;
-    if (Math.abs(a) < 8.2 + sr && Math.abs(lat) < 3.6 + sr) return true;
+    if (Math.abs(a) < c.len / 2 + 0.7 + sr && Math.abs(lat) < (c.w || 6) / 2 + 0.6 + sr) return true;
   }
   return false;
 }
@@ -8792,20 +8797,142 @@ function bmSolidPoint(x, z, y) {          // camera pull-in: is this point insid
 const BM_DIRS = [[0, 1], [1, 0], [0, -1], [-1, 0]];        // +z, +x, -z, -x
 function bmRightOf(d) { const [dx, dz] = BM_DIRS[d]; return [dz, -dx]; }
 const bmCars = [];
-const BM_CAR_TYPES = ['prop_car_red', 'prop_car_blue', 'prop_car_yellow', 'prop_car_black'];
-const BM_CAR_MAX = 30, BM_CAR_TARGET = 22;
+const BM_CAR_MAX = 34, BM_CAR_TARGET = 22;
 const CAR_V = 30, CAR_TURN_V = 12, CAR_ACC = 26, CAR_BRK = 55;   // studs/s
-const STOP_S = 23;                                          // car centre at the stop line
-const bmCarInst = new Map();                                // type -> InstancedMesh
+const BM_GLASS_C = 0x9DC3D4;
+
+/* ---- the Beast Mode garage ----
+   Every vehicle is built from the driver out at true City scale, with its
+   glazing in a second geometry so glass can actually be seen through.      */
+function bmVehWheels(g, axles, half = 2.1) {
+  for (const sz of axles) for (const sx of [-half, half]) {
+    gcyl(g, 1.9, 1.75, sx, 4.75, sz, LC.black, 16, Math.PI / 2, Math.PI / 2);
+    gcyl(g, 1.05, 1.8, sx, 4.75, sz, LC.lgrey, 12, Math.PI / 2, Math.PI / 2);
+  }
+}
+function bmSedanGeo(body, trim, extra) {
+  const gl = [];
+  const g0 = carGeo(body, trim, gl);        // ordinary six-wide sedan, glass split out
+  if (!extra) return { body: g0, glass: gmerge(gl) };
+  const g = [g0];                            // gmerge disposes inputs, so wrap and re-merge
+  extra(g);
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
+function bmTaxiGeo() {
+  return bmSedanGeo(0xFAC80A, LC.black, g => {
+    gbox(g, 3.4, 2.4, 1.8, 0, 17.4, -1.2, LC.white);           // roof sign
+    for (let k = 0; k < 3; k++) gbox(g, 0.8, 1.0, 1.9, -1 + k, 17.4, -1.2, LC.black);
+    for (const sx of [-2.65, 2.65])                            // checker waist band
+      for (let k = 0; k < 5; k++) gbox(g, 0.25, 1.1, 1.3, sx, 8.6, -5 + k * 2.6, LC.black);
+  });
+}
+function bmPoliceGeo() {
+  return bmSedanGeo(0xF4F4F4, LC.black, g => {
+    gbox(g, 1.5, 1.6, 1.3, -0.85, 17.2, -1.2, 0xB40000);       // light bar
+    gbox(g, 1.5, 1.6, 1.3, 0.85, 17.2, -1.2, 0x1E5AA8);
+    gbox(g, 5.7, 0.5, 5.2, 0, 10.5, 4.3, LC.black);            // black bonnet
+    for (const sx of [-2.65, 2.65]) gbox(g, 0.25, 2.2, 9, sx, 7.6, 0, 0x1E5AA8);   // blue flank
+  });
+}
+function bmVanGeo() {
+  const g = [], gl = [];
+  const pink = 0xE06A9F, cream = 0xF4EAD5;
+  bmVehWheels(g, [-5.5, 5.5]);
+  gbox(g, 4.4, 1, 16.4, 0, 1.5, 0, LC.dgrey);                  // chassis
+  gbox(g, 5.4, 1, 16.4, 0, 2.5, 0, LC.white);                  // floor
+  gbox(g, 5.6, 4, 3.6, 0, 5, 7.2, LC.white);                   // nose
+  gbox(g, 5.0, 1.4, 1.2, 0, 8, 8.2, pink);                     // grin bumper trim
+  for (const sx of [-1.9, 1.9]) gbox(g, 1.1, 1.1, 0.4, sx, 6.4, 9.05, LC.white);   // lamps
+  gbox(gl, 5.2, 7, 0.5, 0, 12.5, 5.6, BM_GLASS_C, 0, 0.22);    // windscreen
+  for (const sx of [-2.6, 2.6]) {                              // cab sides + body walls
+    gbox(g, 0.8, 5, 4.4, sx, 5.5, 5.2, LC.white);
+    gbox(gl, 0.4, 5, 3.6, sx, 12.5, 4.8, BM_GLASS_C);          // cab side glass
+    gbox(g, 0.8, 14, 11.6, sx, 10, -2.6, sx < 0 ? LC.white : LC.white);   // box walls
+  }
+  gbox(g, 5.2, 14, 0.8, 0, 10, -8, LC.white);                  // tail
+  gbox(g, 5.4, 2.6, 12, 0, 9.2, -2.4, pink);                   // waist band
+  // serving hatch on the kerb side with a striped awning
+  gbox(g, 0.5, 6, 7, -2.75, 14.5, -2.6, 0x2b3540);
+  for (let s = 0; s < 4; s++)
+    gbox(g, 2.6, 0.7, 1.9, -3.6, 18 - s * 0.001, -5.2 + s * 1.85, s % 2 ? pink : LC.white, 0, 0);
+  gbox(g, 5.8, 1.6, 16.6, 0, 18.3, -0.6, cream);               // roof
+  gcyl(g, 1.5, 3.4, 0, 21, -1.5, cream, 12);                   // the cone on top
+  gcyl(g, 1.0, 2.6, 0, 23.6, -1.5, pink, 10);
+  gbox(g, 0.5, 1.4, 0.5, 0, 25.4, -1.5, 0xB40000);             // cherry
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
+function bmBusGeo() {
+  const g = [], gl = [];
+  const red = 0xB40000, white = 0xF4F4F4;
+  bmVehWheels(g, [-10.5, 10.5], 2.6);
+  gbox(g, 5.6, 1.2, 30, 0, 1.6, 0, LC.dgrey);                  // frame
+  gbox(g, 7, 9, 31, 0, 7, 0, red);                             // lower body
+  for (const sx of [-3.3, 3.3]) {
+    gbox(gl, 0.5, 7, 27, sx, 15, -1.5, BM_GLASS_C);            // window band
+    for (const zc of [-8, -1, 6]) gbox(g, 0.7, 7.6, 1.2, sx, 15, zc - 3.2, red);   // pillars
+  }
+  gbox(g, 7, 8, 0.9, 0, 15, -15.1, red);                       // tail
+  gbox(gl, 6.2, 7.6, 0.5, 0, 15.2, 15.3, BM_GLASS_C, 0, 0.12); // windscreen
+  gbox(gl, 0.45, 11, 4.4, 3.35, 9.5, 10.6, BM_GLASS_C);        // kerb-side door
+  gbox(g, 7.2, 1.8, 31.2, 0, 19.6, 0, white);                  // roof
+  gbox(g, 5, 2.4, 0.7, 0, 19.2, 15.45, white);                 // route box
+  gbox(g, 3.6, 1.2, 0.75, 0, 19.2, 15.5, 0xFAC80A);
+  for (const sx of [-2.2, 2.2]) gbox(g, 1.2, 1.2, 0.5, sx, 5, 15.6, white);   // headlamps
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
+function bmTruckGeo() {
+  const g = [], gl = [];
+  const cab = 0x1E5AA8, boxc = 0xF4F4F4;
+  bmVehWheels(g, [8, -3.5, -7.5], 2.4);
+  gbox(g, 5, 1.2, 22.5, 0, 1.7, 0, LC.dgrey);                  // frame
+  gbox(g, 6.6, 8, 6.4, 0, 7.5, 8.2, cab);                      // cab
+  gbox(gl, 5.8, 5.6, 0.5, 0, 14.2, 11.2, BM_GLASS_C, 0, 0.12); // windscreen
+  for (const sx of [-3.1, 3.1]) gbox(gl, 0.4, 4.6, 4.4, sx, 13.6, 8.2, BM_GLASS_C);
+  gbox(g, 6.6, 1.4, 6.4, 0, 17.2, 8.2, cab);                   // cab roof
+  gbox(g, 6.2, 1.6, 1, 0, 4.4, 11.6, LC.dgrey);                // bumper
+  for (const sx of [-2.4, 2.4]) gbox(g, 1.1, 1.1, 0.4, sx, 6, 11.65, LC.white);
+  for (const sx of [-3.6, 3.6]) gbox(g, 0.5, 2.6, 0.5, sx, 14.5, 10.8, LC.dgrey);   // mirrors
+  gbox(g, 7, 15, 14.4, 0, 11, -4.2, boxc);                     // the box
+  gbox(g, 7.15, 3.2, 14.4, 0, 12.5, -4.2, 0xD67923);           // livery band
+  gbox(g, 7.15, 0.8, 14.4, 0, 8.3, -4.2, 0xD67923);
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
+const BM_VEHICLES = {
+  car_red:    { len: 15, make: () => bmSedanGeo(0xC4281B, LC.dgrey), w: 6 },
+  car_blue:   { len: 15, make: () => bmSedanGeo(0x0055BF, LC.white), w: 6 },
+  car_yellow: { len: 15, make: () => bmSedanGeo(0xF2CD37, LC.dgrey), w: 6 },
+  car_black:  { len: 15, make: () => bmSedanGeo(0x1B2A34, LC.lgrey), w: 6 },
+  taxi:       { len: 15, make: bmTaxiGeo, w: 6 },
+  police:     { len: 15, make: bmPoliceGeo, w: 6 },
+  van:        { len: 18, make: bmVanGeo, w: 6 },
+  truck:      { len: 24, make: bmTruckGeo, w: 7 },
+  bus:        { len: 32, make: bmBusGeo, w: 7 },
+};
+const BM_TRAFFIC_MIX = [['car_red', 10], ['car_blue', 10], ['car_yellow', 8], ['car_black', 8],
+                        ['taxi', 16], ['police', 7], ['van', 8], ['truck', 12], ['bus', 10]];
+const BM_PARK_MIX = [['car_red', 20], ['car_blue', 20], ['car_yellow', 15], ['car_black', 15],
+                     ['taxi', 15], ['van', 15]];
+function bmPickVeh(mix, r) {
+  let total = 0;
+  for (const [, w] of mix) total += w;
+  let acc = r * total;
+  for (const [t, w] of mix) { acc -= w; if (acc <= 0) return t; }
+  return mix[0][0];
+}
+const bmVehGlassMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true,
+                                                      opacity: 0.42, depthWrite: false });
+const bmVehInst = new Map();     // type -> { body: InstancedMesh, glass: InstancedMesh }
 function bmInitCarMeshes() {
-  if (bmCarInst.size) return;
-  for (const t of BM_CAR_TYPES) {
-    const m = new THREE.InstancedMesh(geos.get(t), propMat, BM_CAR_MAX);
-    m.castShadow = m.receiveShadow = true;
-    m.frustumCulled = false;
-    m.count = 0;
-    beastRoot.add(m);
-    bmCarInst.set(t, m);
+  if (bmVehInst.size) return;
+  for (const [t, spec] of Object.entries(BM_VEHICLES)) {
+    const { body, glass } = spec.make();
+    const mb = new THREE.InstancedMesh(body, propMat, BM_CAR_MAX);
+    mb.castShadow = mb.receiveShadow = true;
+    mb.frustumCulled = false; mb.count = 0;
+    const mg = new THREE.InstancedMesh(glass, bmVehGlassMat, BM_CAR_MAX);
+    mg.frustumCulled = false; mg.count = 0;
+    beastRoot.add(mb, mg);
+    bmVehInst.set(t, { body: mb, glass: mg });
   }
 }
 /* the light cycle: 16 s — NS green, all red, EW green, all red */
@@ -8848,32 +8975,36 @@ function bmSpawnCar() {
     if (dist < 210 && dot > 0) continue;
     let tooClose = false;
     for (const c of bmCars)
-      if (Math.hypot(c.x - x, c.z - z) < 24) { tooClose = true; break; }
+      if (Math.hypot(c.x - x, c.z - z) < 34) { tooClose = true; break; }
     if (tooClose) continue;
-    bmCars.push({ t: BM_CAR_TYPES[(Math.random() * 4) | 0], x, z, d, v: CAR_V * (0.75 + Math.random() * 0.25),
-                  max: CAR_V * (0.8 + Math.random() * 0.25), act: 'cruise',
+    const t = bmPickVeh(BM_TRAFFIC_MIX, Math.random());
+    const len = BM_VEHICLES[t].len;
+    bmCars.push({ t, len, w: BM_VEHICLES[t].w, stopS: 16 + len / 2, heavy: len >= 20,
+                  x, z, d, v: CAR_V * (0.75 + Math.random() * 0.25),
+                  max: CAR_V * (len >= 20 ? 0.72 : 0.8 + Math.random() * 0.25), act: 'cruise',
                   decided: null, turn: 0, arc: null, yaw: Math.atan2(dx, dz) });
     return;
   }
 }
-function bmAheadGap(car) {                   // distance to whatever is queued ahead of us
+function bmAheadGap(car) {         // bumper clearance to whatever is queued ahead of us
   const [dx, dz] = BM_DIRS[car.d];
+  const half = car.len / 2;
   let gap = 999;
   for (const o of bmCars) {
     if (o === car) continue;
     const a = (o.x - car.x) * dx + (o.z - car.z) * dz;                 // ahead of us?
     const lat = Math.abs((o.x - car.x) * dz - (o.z - car.z) * dx);     // and on our lane?
-    if (a > 0 && a < gap && lat < 5) gap = a;
+    if (a > 0 && lat < 5.5) gap = Math.min(gap, a - half - o.len / 2);
   }
-  // the player on foot is an obstacle too — never drive through them
+  // the player on foot (or their car) is an obstacle too
   const pa = (play.x / P - car.x) * dx + (play.z / P - car.z) * dz;
   const pl = Math.abs((play.x / P - car.x) * dz - (play.z / P - car.z) * dx);
-  if (pa > 0 && pa < gap && pl < 5) gap = pa;
+  if (pa > 0 && pl < 5.5) gap = Math.min(gap, pa - half - (bmDrive ? 8 : 0));
   // and so is any minifig on the road ahead
   for (const p of bmPeds) {
     const a = (p.x - car.x) * dx + (p.z - car.z) * dz;
     const lat = Math.abs((p.x - car.x) * dz - (p.z - car.z) * dx);
-    if (a > 0 && a < gap && lat < 5) gap = a;
+    if (a > 0 && lat < 5.5) gap = Math.min(gap, a - half);
   }
   return gap;
 }
@@ -8946,7 +9077,9 @@ function bmStepTraffic(dt) {
     if (car.decided !== key && s < 45) {
       car.decided = key;
       const r = Math.random();
-      car.turn = r < 0.55 ? 0 : r < 0.8 ? 1 : 2;          // straight / right / left
+      // long vehicles can't take the tight right arc; they go straight or left
+      car.turn = car.heavy ? (r < 0.7 ? 0 : 2)
+                           : (r < 0.55 ? 0 : r < 0.8 ? 1 : 2);
     }
     const green = (dz !== 0) ? sig.ns : sig.ew;
     // the tail of a green works as amber: never commit to the box on a light
@@ -8957,8 +9090,8 @@ function bmStepTraffic(dt) {
     let want = car.max;
     // red light (or a left turn waiting its gap): stop with the nose at the line
     let holdAt = null;
-    if (s > 0 && s < 60 && (!green || (amber && s > 12)) && s > STOP_S - 6) holdAt = STOP_S;
-    if (car.decided === key && car.turn === 2 && green && s > 0 && s <= STOP_S + 4) {
+    if (s > 0 && s < 60 && (!green || (amber && s > 12)) && s > car.stopS - 6) holdAt = car.stopS;
+    if (car.decided === key && car.turn === 2 && green && s > 0 && s <= car.stopS + 4) {
       // left turns give way to oncoming traffic; two opposite left-turners
       // would sweep through each other, so the lower direction index goes first
       for (const o of bmCars) {
@@ -8966,8 +9099,8 @@ function bmStepTraffic(dt) {
         const os = (ix - o.x) * BM_DIRS[o.d][0] + (iz - o.z) * BM_DIRS[o.d][1];
         if (os <= -10 || os >= 75) continue;
         const oLeft = o.turn === 2 && o.decided;
-        if (oLeft) { if (car.d > o.d) { holdAt = STOP_S; break; } }
-        else if (o.v > 3) { holdAt = STOP_S; break; }
+        if (oLeft) { if (car.d > o.d) { holdAt = car.stopS; break; } }
+        else if (o.v > 3) { holdAt = car.stopS; break; }
       }
     }
     if (holdAt != null && s > holdAt - 1) {
@@ -8978,9 +9111,9 @@ function bmStepTraffic(dt) {
       want = Math.min(want, Math.max(CAR_TURN_V, Math.sqrt(CAR_TURN_V * CAR_TURN_V + 2 * CAR_BRK * room)));
     }
     // whatever is queued ahead
-    const gap = bmAheadGap(car);
-    if (gap < 40) {
-      const room = gap - 18.5;
+    const clear = bmAheadGap(car);
+    if (clear < 30) {
+      const room = clear - 3.5;
       want = room <= 0 ? 0 : Math.min(want, Math.sqrt(Math.max(0, 2 * CAR_BRK * room)) * 0.7);
     }
     if (car.v < want) car.v = Math.min(want, car.v + CAR_ACC * dt);
@@ -9006,24 +9139,30 @@ function bmStepTraffic(dt) {
     }
     if (s2 < -8) car.decided = null;         // through and clear: free to decide again
   }
-  // draw
+  // draw: traffic + every parked car + the one being driven, body and glass
   const counts = new Map();
-  for (const t of BM_CAR_TYPES) counts.set(t, 0);
-  for (const car of bmCars) {
-    const m = bmCarInst.get(car.t);
-    const k = counts.get(car.t);
-    if (k >= BM_CAR_MAX) continue;
-    _bmO.position.set(car.x * P, BM_ROAD_TOP * PH, car.z * P);
-    _bmO.rotation.set(0, car.yaw, 0);
+  for (const t of bmVehInst.keys()) counts.set(t, 0);
+  const put = (t, x, z, y, yaw) => {
+    const inst = bmVehInst.get(t);
+    if (!inst) return;
+    const k = counts.get(t);
+    if (k >= BM_CAR_MAX) return;
+    _bmO.position.set(x * P, y * PH, z * P);
+    _bmO.rotation.set(0, yaw, 0);
     _bmO.scale.set(1, 1, 1);
     _bmO.updateMatrix();
-    m.setMatrixAt(k, _bmO.matrix);
-    counts.set(car.t, k + 1);
-  }
-  for (const t of BM_CAR_TYPES) {
-    const m = bmCarInst.get(t);
-    m.count = counts.get(t);
-    m.instanceMatrix.needsUpdate = true;
+    inst.body.setMatrixAt(k, _bmO.matrix);
+    inst.glass.setMatrixAt(k, _bmO.matrix);
+    counts.set(t, k + 1);
+  };
+  for (const car of bmCars) put(car.t, car.x, car.z, BM_ROAD_TOP, car.yaw);
+  for (const c of bmChunks.values())
+    if (c.parked) for (const p of c.parked) put(p.t, p.x, p.z, p.y, p.yaw);
+  if (bmDrive) put(bmDrive.t, bmDrive.x, bmDrive.z, play.y / PH, bmDrive.yaw);
+  for (const [t, inst] of bmVehInst) {
+    inst.body.count = inst.glass.count = counts.get(t);
+    inst.body.instanceMatrix.needsUpdate = true;
+    inst.glass.instanceMatrix.needsUpdate = true;
   }
 }
 
@@ -9067,16 +9206,16 @@ function bmSyncLights() {
    Any car parked in a kerb bay can be taken. Entering lifts it out of the
    chunk's props and solids; leaving parks it where it stands, snapped to one
    of sixteen facings, and hands it back to the chunk.                      */
-let bmDrive = null, bmDriveMesh = null, bmNearCar = null;
+let bmDrive = null, bmNearCar = null;
 function bmFindNearCar() {
   bmNearCar = null;
-  let bd = 13;
+  let bd = 14;
   const px = play.x / P, pz = play.z / P;
   for (const c of bmChunks.values()) {
+    if (!c.parked) continue;
     if (Math.abs((c.i + 0.5) * BM.PITCH - px) > 130 || Math.abs((c.j + 0.5) * BM.PITCH - pz) > 130) continue;
-    for (let k = 0; k < c.props.length; k++) {
-      const p = c.props[k];
-      if (p.t.slice(0, 8) !== 'prop_car') continue;
+    for (let k = 0; k < c.parked.length; k++) {
+      const p = c.parked[k];
       const d = Math.hypot(p.x - px, p.z - pz);
       if (d < bd) { bd = d; bmNearCar = { chunk: c, idx: k, p }; }
     }
@@ -9085,18 +9224,11 @@ function bmFindNearCar() {
 function bmEnterCar() {
   if (!bmNearCar || bmDrive) return;
   const { chunk, idx, p } = bmNearCar;
-  chunk.props.splice(idx, 1);
+  chunk.parked.splice(idx, 1);
   const ci = chunk.solids.findIndex(s => p.x > s[0] - 0.6 && p.x < s[1] + 0.6 &&
                                          p.z > s[2] - 0.6 && p.z < s[3] + 0.6 && s[4] === 17);
   if (ci >= 0) chunk.solids.splice(ci, 1);
-  bmPropsDirty = true;
-  bmDrive = { t: p.t, x: p.x, z: p.z, yaw: p.yaw, v: 0, prevCam: bmCamIdx };
-  if (!bmDriveMesh) {
-    bmDriveMesh = new THREE.Mesh(geos.get(p.t), propMat);
-    bmDriveMesh.castShadow = bmDriveMesh.receiveShadow = true;
-    beastRoot.add(bmDriveMesh);
-  } else bmDriveMesh.geometry = geos.get(p.t);
-  bmDriveMesh.visible = true;
+  bmDrive = { t: p.t, len: BM_VEHICLES[p.t].len, x: p.x, z: p.z, yaw: p.yaw, v: 0, prevCam: bmCamIdx };
   bmNearCar = null;
   if (BCAMS[bmCamIdx].id !== 'fpv' && BCAMS[bmCamIdx].id !== 'chase') bmSetCam(1);
   toast('Driving — the button gets you out');
@@ -9108,12 +9240,13 @@ function bmExitCar() {
   const yaw = Math.round(d.yaw / STEP16) * STEP16;
   const chunk = bmChunks.get(Math.floor(d.x / BM.PITCH) + ',' + Math.floor(d.z / BM.PITCH));
   if (chunk) {
-    chunk.props.push({ t: d.t, x: d.x, z: d.z, yaw, y: bmGroundPl(d.x, d.z) });
+    if (!chunk.parked) chunk.parked = [];
+    chunk.parked.push({ t: d.t, x: d.x, z: d.z, yaw, y: bmGroundPl(d.x, d.z) });
+    const half = d.len / 2 + 0.5;
     const ax = Math.abs(Math.sin(yaw)) < 0.4, az = Math.abs(Math.cos(yaw)) < 0.4;
-    chunk.solids.push(ax ? [d.x - 3.2, d.x + 3.2, d.z - 7.6, d.z + 7.6, 17, 0]
-                    : az ? [d.x - 7.6, d.x + 7.6, d.z - 3.2, d.z + 3.2, 17, 0]
-                         : [d.x - 6, d.x + 6, d.z - 6, d.z + 6, 17, 0]);
-    bmPropsDirty = true;
+    chunk.solids.push(ax ? [d.x - 3.2, d.x + 3.2, d.z - half, d.z + half, 17, 0]
+                    : az ? [d.x - half, d.x + half, d.z - 3.2, d.z + 3.2, 17, 0]
+                         : [d.x - 6.5, d.x + 6.5, d.z - 6.5, d.z + 6.5, 17, 0]);
   }
   // step out on the driver's side, a little clear of the door
   play.x = (d.x - Math.cos(yaw) * 6) * P;
@@ -9121,7 +9254,6 @@ function bmExitCar() {
   play.y = bmGroundPl(play.x / P, play.z / P) * PH;
   play.vy = 0; play.yaw = yaw;
   bmDrive = null;
-  bmDriveMesh.visible = false;
   if (fig) for (const k of ['legL', 'legR', 'armL', 'armR']) fig.userData[k].rotation.x = 0;
   toast('Out of the car');
 }
@@ -9152,8 +9284,6 @@ function bmStepDrive(dt) {
   play.x = d.x * P; play.z = d.z * P;
   play.y = bmGroundPl(d.x, d.z) * PH;
   play.yaw = d.yaw; play.phase = 0;
-  bmDriveMesh.position.set(play.x, play.y, play.z);
-  bmDriveMesh.rotation.set(0, d.yaw, 0);
   if (fig) {
     fig.visible = BCAMS[bmCamIdx].id !== 'fpv';
     const back = -CAR.SEAT_Z * P;
@@ -9711,7 +9841,7 @@ function setBeastMode(on) {
     for (const key of [...bmChunks.keys()]) bmDropChunk(key);
     for (const pool of bmPropPool.values()) pool.mesh.count = 0;
     bmCars.length = 0;
-    for (const m of bmCarInst.values()) m.count = 0;
+    for (const inst of bmVehInst.values()) inst.body.count = inst.glass.count = 0;
     bmRedInst.count = bmGrnInst.count = 0;
     while (bmPeds.length) bmDropPed(0);
     if (bmBirdUp) { bmBirdUp.count = bmBirdDn.count = 0; }
