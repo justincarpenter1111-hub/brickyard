@@ -1630,6 +1630,7 @@ canvas.addEventListener('pointerdown', e => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
   clearTimeout(longTimer);
   if (beastOn) {                       // city: one finger swings the view, two zoom
+    if (bmIntro > 0) bmIntro = 0;      // any touch skips the wake-up
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       two = { dist: Math.hypot(a.x - b.x, a.y - b.y), my: (a.y + b.y) / 2, fpv: 0 };
@@ -8380,6 +8381,7 @@ function bmDistrict(i, j) {
   return f > 0.68 ? 'downtown' : f < 0.34 ? 'suburb' : 'mid';
 }
 function bmChunkType(i, j) {                         // what lives on block (i,j)?
+  if (i === 0 && j === 0) return 'city';             // home block, always
   const r = rng(bmSeed(i * 3 + 11, j * 3 - 7))();
   const d = bmDistrict(i, j);
   if (r < (d === 'suburb' ? 0.24 : d === 'downtown' ? 0.07 : 0.15)) return 'park';
@@ -8694,6 +8696,61 @@ function bmStuds(g, xa, za, xb, zb, y, col, step) {
       gcyl(g, 0.3, 1.0, sx, y + 0.5, sz, col, 6);
 }
 
+/* ---- home ----
+   The parcel the player wakes up in (Codex drew the floor plan): a one-storey
+   house with an open doorway, a bedroom with the bed/rug/lamp/teddy, and a
+   garage holding the family car, a skateboard and grandma's old broom.      */
+function bmHome(g, glow, solids, chunk) {
+  const X = lx => 40 + lx, Z = lz => 24 + lz, Y = ly => 5 + ly;
+  const W = (sx, sy, sz, lx, ly, lz, col) => {
+    gbox(g, sx, sy, sz, X(lx), Y(ly), Z(lz), col);
+    solids.push([X(lx) - sx / 2, X(lx) + sx / 2, Z(lz) - sz / 2, Z(lz) + sz / 2,
+                 Y(ly) + sy / 2, Y(ly) - sy / 2]);
+  };
+  const wallC = 0xD7BA8C, roofC = 0x720012;
+  gbox(g, 30, 1, 23, X(0), Y(-0.5), Z(17.5), 0xBB805A);              // timber floor
+  W(1, 21, 23, -14.5, 10.5, 17.5, wallC);                            // shell
+  W(1, 21, 23, 14.5, 10.5, 17.5, wallC);
+  W(30, 21, 1, 0, 10.5, 28.5, wallC);
+  W(13.5, 21, 1, -8.25, 10.5, 6.5, wallC);
+  W(3.5, 21, 1, 3.25, 10.5, 6.5, wallC);
+  W(3, 3, 1, 0, 19.5, 6.5, wallC);                                   // front door header
+  gbox(g, 20, 1.4, 24.5, X(-5), Y(21.7), Z(17.5), roofC);            // roofs
+  gbox(g, 10, 1.4, 24.5, X(10), Y(21.7), Z(17.5), roofC);
+  bmStuds(g, X(-15), Z(6.5), X(15), Z(28.5), Y(22.4), roofC, 4);
+  solids.push([X(-15), X(15), Z(6), Z(29), Y(22.4), Y(21)]);
+  W(1, 21, 15, 5.5, 10.5, 13.5, wallC);                              // garage divider
+  W(1, 21, 5, 5.5, 10.5, 26.5, wallC);
+  W(1, 3, 3, 5.5, 19.5, 22.5, wallC);
+  W(1, 21, 12, -3.5, 10.5, 22, wallC);                               // bedroom wall
+  W(5, 21, 1, -11.5, 10.5, 16.5, wallC);
+  W(3, 21, 1, -4.5, 10.5, 16.5, wallC);
+  W(3, 3, 1, -7.5, 19.5, 16.5, wallC);
+  // windows: one on each outer bedroom wall, warm at night
+  for (const [lx, lz, alongX] of [[-14.5, 21, false], [-8, 28.5, true]]) {
+    gbox(g, alongX ? 4 : 1.4, 10, alongX ? 1.4 : 4, X(lx), Y(12), Z(lz), 0x10161C);
+    gbox(glow, alongX ? 4.4 : 0.6, 11, alongX ? 0.6 : 4.4,
+         X(lx) + (alongX ? 0 : -0.6), Y(12), Z(lz) + (alongX ? 0.6 : 0), 0xFFDf9E);
+  }
+  gbox(g, 8, 0.5, 22, X(10), 4.35, Z(-5), 0x8A8A86);                 // the driveway
+  // furniture (real prop kits)
+  bmProp(chunk, 'prop_bed', 28.5, 46.5, Math.PI / 2, 5);
+  solids.push([26, 31, 43, 50, 13, 5]);
+  bmProp(chunk, 'prop_rug', 33, 46, 0, 5);
+  bmProp(chunk, 'prop_lamp_floor', 35, 50.5, 0, 5);
+  gbox(glow, 1.6, 2, 1.6, 35, Y(9), 50.5, 0xFFD27A);
+  bmProp(chunk, 'prop_teddy', 28.4, 48, -0.6, 11);
+  bmProp(chunk, 'prop_bookshelf', 33.8, 51.4, Math.PI, 5);
+  solids.push([32, 35.6, 50.4, 52.2, 20, 5]);
+  bmProp(chunk, 'prop_armchair', 27, 40.5, 0.8, 5);
+  // the garage fleet — parked so a minifig can squeeze past the car
+  chunk.parked.push({ t: 'car_red', x: 49.4, z: 41.5, yaw: Math.PI, y: 5 });
+  solids.push([46.6, 52.2, 34.5, 48.5, 22, 5]);
+  chunk.parked.push({ t: 'skate', x: 46.4, z: 32.5, yaw: Math.PI + 0.3, y: 5 });
+  chunk.parked.push({ t: 'broom', x: 53.1, z: 50.2, yaw: 1.2, y: 6 });
+  bmHomePos.x = 40; bmHomePos.z = 33;
+}
+
 /* the clock tower: a civic landmark you can steer by from three blocks out */
 function bmClockTower(g, glow, solids, R, px0, pz0) {
   const cx = px0 + 16, cz = pz0 + 16;
@@ -8934,6 +8991,8 @@ function bmGenChunk(i, j) {
     for (const [qa, qb] of [[26, 51], [61, 86]])
       for (const [ra, rb] of [[26, 51], [61, 86]])
         bmStuds(g, x0 + qa, z0 + ra, x0 + qb, z0 + rb, 5.2, 0x27913C, 10);
+    // a third of the parks hide a broomstick behind the fountain
+    if (R() < 0.34) chunk.parked.push({ t: 'broom', x: x0 + 59.5, z: z0 + 53, yaw: 0.7, y: 5 });
     // low hedge ring with gaps at the path mouths
     for (const [hx, hz, sw, sd] of [[56 - 17.5, 25, 29, 1.4], [56 + 17.5, 25, 29, 1.4],
                                     [56 - 17.5, 87, 29, 1.4], [56 + 17.5, 87, 29, 1.4],
@@ -8949,7 +9008,9 @@ function bmGenChunk(i, j) {
     const towerAt = ((bmSeed(i, j) >>> 8) % 19) === 0 ? ((bmSeed(i, j) >>> 4) & 3) : -1;
     let q = 0;
     for (const qx of [0, 1]) for (const qz of [0, 1]) {
-      if (q++ === towerAt) bmClockTower(g, glow, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32);
+      if (i === 0 && j === 0 && qx === 0 && qz === 0) { q++; bmHome(g, glow, solids, chunk); }
+      else if (q++ === towerAt && !(i === 0 && j === 0))
+        bmClockTower(g, glow, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32);
       else bmBuilding(g, glow, glass, signs, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, qx, qz, district);
     }
     // street trees hug the kerb line, clear of the walking line — face-first
@@ -9215,7 +9276,17 @@ function bmTruckGeo() {
   gbox(g, 7.15, 0.8, 14.4, 0, 8.3, -4.2, 0xD67923);
   return { body: gmerge(g), glass: gmerge(gl) };
 }
+function bmSkateGeo() {
+  const g = [];
+  gbox(g, 1.9, 0.8, 5.2, 0, 2.2, -0.2, 0xFAC80A);            // deck
+  gbox(g, 1.9, 0.7, 1.0, 0, 2.8, 2.6, 0xF2CD37);             // kicked nose
+  for (const sz of [-1.7, 1.6]) for (const sx of [-0.75, 0.75])
+    gcyl(g, 0.45, 0.9, sx, 0.9, sz, LC.white, 8, Math.PI / 2, Math.PI / 2);
+  return { body: gmerge(g), glass: null };
+}
 const BM_VEHICLES = {
+  skate:      { len: 6,  make: bmSkateGeo, w: 2, ride: 'skate' },
+  broom:      { len: 12, make: () => ({ body: geos.get('prop_broom'), glass: null }), w: 2, ride: 'broom' },
   car_red:    { len: 15, make: () => bmSedanGeo(0xC4281B, LC.dgrey), w: 6 },
   car_blue:   { len: 15, make: () => bmSedanGeo(0x0055BF, LC.white), w: 6 },
   car_yellow: { len: 15, make: () => bmSedanGeo(0xF2CD37, LC.dgrey), w: 6 },
@@ -9275,9 +9346,13 @@ function bmInitCarMeshes() {
     const mb = new THREE.InstancedMesh(body, propMat, BM_CAR_MAX);
     mb.castShadow = mb.receiveShadow = true;
     mb.frustumCulled = false; mb.count = 0;
-    const mg = new THREE.InstancedMesh(glass, bmVehGlassMat, BM_CAR_MAX);
-    mg.frustumCulled = false; mg.count = 0;
-    beastRoot.add(mb, mg);
+    let mg = null;
+    if (glass) {
+      mg = new THREE.InstancedMesh(glass, bmVehGlassMat, BM_CAR_MAX);
+      mg.frustumCulled = false; mg.count = 0;
+      beastRoot.add(mg);
+    }
+    beastRoot.add(mb);
     bmVehInst.set(t, { body: mb, glass: mg });
   }
 }
@@ -9569,7 +9644,7 @@ function bmStepTraffic(dt) {
     _bmO.scale.set(1, 1, 1);
     _bmO.updateMatrix();
     inst.body.setMatrixAt(k, _bmO.matrix);
-    inst.glass.setMatrixAt(k, _bmO.matrix);
+    if (inst.glass) inst.glass.setMatrixAt(k, _bmO.matrix);
     counts.set(t, k + 1);
   };
   // the player's own car draws FIRST — when a pool ever fills, the car you are
@@ -9579,9 +9654,12 @@ function bmStepTraffic(dt) {
   for (const c of bmChunks.values())
     if (c.parked) for (const p of c.parked) put(p.t, p.x, p.z, p.y, p.yaw);
   for (const [t, inst] of bmVehInst) {
-    inst.body.count = inst.glass.count = counts.get(t);
+    inst.body.count = counts.get(t);
     inst.body.instanceMatrix.needsUpdate = true;
-    inst.glass.instanceMatrix.needsUpdate = true;
+    if (inst.glass) {
+      inst.glass.count = counts.get(t);
+      inst.glass.instanceMatrix.needsUpdate = true;
+    }
   }
   // night dressing: headlight pools on the tarmac, and the police strobe
   let hn = 0, fr = 0, fb = 0;
@@ -9682,10 +9760,14 @@ function bmEnterCar() {
   const ci = chunk.solids.findIndex(s => p.x > s[0] - 0.6 && p.x < s[1] + 0.6 &&
                                          p.z > s[2] - 0.6 && p.z < s[3] + 0.6 && s[4] === 17);
   if (ci >= 0) chunk.solids.splice(ci, 1);
-  bmDrive = { t: p.t, len: BM_VEHICLES[p.t].len, x: p.x, z: p.z, yaw: p.yaw, v: 0, prevCam: bmCamIdx };
+  const ride = BM_VEHICLES[p.t].ride || 'car';
+  bmDrive = { t: p.t, len: BM_VEHICLES[p.t].len, kind: ride,
+              x: p.x, z: p.z, yaw: p.yaw, v: 0, prevCam: bmCamIdx };
   bmNearCar = null;
-  if (BCAMS[bmCamIdx].id !== 'chase') bmSetCam(1);   // always start seeing your car
-  toast('Driving — the button gets you out');
+  if (BCAMS[bmCamIdx].id !== 'chase') bmSetCam(1);   // always start seeing your ride
+  toast(ride === 'broom' ? 'Up, up! Hold jump to climb — the button lands you'
+      : ride === 'skate' ? 'Rolling! Jump to ollie — the button hops off'
+      : 'Driving — the button gets you out');
 }
 function bmExitCar() {
   if (!bmDrive) return;
@@ -9697,10 +9779,11 @@ function bmExitCar() {
     if (!chunk.parked) chunk.parked = [];
     chunk.parked.push({ t: d.t, x: d.x, z: d.z, yaw, y: bmGroundPl(d.x, d.z) });
     const half = d.len / 2 + 0.5;
+    const topH = (d.kind === 'car' ? 17 : 6) + bmGroundPl(d.x, d.z);
     const ax = Math.abs(Math.sin(yaw)) < 0.4, az = Math.abs(Math.cos(yaw)) < 0.4;
-    chunk.solids.push(ax ? [d.x - 3.2, d.x + 3.2, d.z - half, d.z + half, 17, 0]
-                    : az ? [d.x - half, d.x + half, d.z - 3.2, d.z + 3.2, 17, 0]
-                         : [d.x - 6.5, d.x + 6.5, d.z - 6.5, d.z + 6.5, 17, 0]);
+    chunk.solids.push(ax ? [d.x - 3.2, d.x + 3.2, d.z - half, d.z + half, topH, 0]
+                    : az ? [d.x - half, d.x + half, d.z - 3.2, d.z + 3.2, topH, 0]
+                         : [d.x - 6.5, d.x + 6.5, d.z - 6.5, d.z + 6.5, topH, 0]);
   }
   // step out on the driver's side, a little clear of the door
   play.x = (d.x - Math.cos(yaw) * 6) * P;
@@ -9711,42 +9794,94 @@ function bmExitCar() {
   if (fig) for (const k of ['legL', 'legR', 'armL', 'armR']) fig.userData[k].rotation.x = 0;
   toast('Out of the car');
 }
-function bmStepDrive(dt) {
-  const d = bmDrive;
+let bmJumpHeld = false;
+function bmSteer(d, dt, turnRate) {
   let ix = stickV.x, iz = stickV.y;
   if (keys.w || keys.ArrowUp) iz -= 1;
   if (keys.s || keys.ArrowDown) iz += 1;
   if (keys.a || keys.ArrowLeft) ix -= 1;
   if (keys.d || keys.ArrowRight) ix += 1;
-  const len = Math.hypot(ix, iz);
-  const top = 34 * (sprintOn || keys.Shift ? 1 : 0.62);            // studs/s
-  if (len > 0.1) {
+  const mag = Math.hypot(ix, iz);
+  if (mag > 0.1) {
     const st = Math.sin(chase.theta), ct = Math.cos(chase.theta);
     const want = Math.atan2(ix * ct + iz * st, -ix * st + iz * ct);
     let dy = want - d.yaw;
     while (dy > Math.PI) dy -= 2 * Math.PI;
     while (dy < -Math.PI) dy += 2 * Math.PI;
-    d.yaw += dy * Math.min(1, dt * 2.6);                           // cars turn slowly — that's the feel
-    d.v = Math.min(top, d.v + dt * 28);
-  } else d.v = Math.max(0, d.v - dt * 34);
+    d.yaw += dy * Math.min(1, dt * turnRate);
+  }
+  return mag;
+}
+function bmStepBroom(dt, d) {
+  const mag = bmSteer(d, dt, 1.6);
+  const top = 48 * (sprintOn || keys.Shift ? 1.25 : 1);            // Grok's flight numbers
+  d.v = mag > 0.1 ? Math.min(top * Math.min(1, mag), d.v + dt * 18)
+                  : Math.max(0, d.v - dt * 8);
   const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
   const nx = d.x + fx * d.v * dt, nz = d.z + fz * d.v * dt;
-  const feet = BM_ROAD_TOP * PH;
-  if (!bmBlocked((nx + fx * 6.5) * P, (nz + fz * 6.5) * P, feet, CLIMB_RIDE, 0.016) &&
-      !bmBlocked(nx * P, nz * P, feet, CLIMB_RIDE, 0.02)) { d.x = nx; d.z = nz; }
+  if (!bmBlocked(nx * P, nz * P, play.y, 0.004, 0.012)) { d.x = nx; d.z = nz; }
+  else d.v = Math.max(0, d.v - dt * 60);
+  // hold jump to climb; let go and the broom settles gently
+  if (bmJumpHeld || keys[' ']) play.y += 22 * P * dt;
+  else play.y -= 5 * P * dt;
+  const floor = bmGroundAt(d.x * P, d.z * P, play.y, 0.002) + 2 * PH;
+  play.y = Math.max(floor, Math.min(play.y, 96 * P));
+  play.grounded = play.y <= floor + 0.0005;
+  play.x = d.x * P; play.z = d.z * P;
+  play.yaw = d.yaw; play.phase = 0; play.vy = 0;
+  if (fig) {
+    fig.visible = BCAMS[bmCamIdx].id !== 'fpv';
+    fig.position.set(play.x + fx * BROOM.SEAT_Z * P, play.y + (BROOM.SEAT_Y - 3.59) * PH,
+                     play.z + fz * BROOM.SEAT_Z * P);
+    fig.rotation.y = d.yaw;
+    fig.userData.legL.rotation.x = -0.2;
+    fig.userData.legR.rotation.x = -0.2;
+    fig.userData.armL.rotation.x = -1.35;
+    fig.userData.armR.rotation.x = -1.35;
+  }
+}
+function bmStepDrive(dt) {
+  const d = bmDrive;
+  if (d.kind === 'broom') return bmStepBroom(dt, d);
+  const skate = d.kind === 'skate';
+  const mag = bmSteer(d, dt, skate ? 2.9 : 2.6);
+  const top = (skate ? 16 : 34) * (sprintOn || keys.Shift ? 1 : skate ? 0.72 : 0.62);
+  if (mag > 0.1) d.v = Math.min(top, d.v + dt * (skate ? 14 : 28));
+  else d.v = Math.max(0, d.v - dt * (skate ? 8 : 34));
+  const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+  const nx = d.x + fx * d.v * dt, nz = d.z + fz * d.v * dt;
+  const feet = play.y;
+  const nose = skate ? 2.5 : 6.5;
+  if (!bmBlocked((nx + fx * nose) * P, (nz + fz * nose) * P, feet, CLIMB_RIDE, skate ? 0.006 : 0.016) &&
+      !bmBlocked(nx * P, nz * P, feet, CLIMB_RIDE, skate ? 0.008 : 0.02)) { d.x = nx; d.z = nz; }
   else d.v = 0;
   play.x = d.x * P; play.z = d.z * P;
-  play.y = bmGroundPl(d.x, d.z) * PH;
+  const gfloor = bmGroundPl(d.x, d.z) * PH;
+  if (skate) {                                     // skateboards ollie — real air
+    play.vy -= GRAV * dt;
+    play.y += play.vy * dt;
+    if (play.y <= gfloor) { play.y = gfloor; play.vy = 0; play.grounded = true; }
+    else play.grounded = false;
+  } else { play.y = gfloor; play.grounded = true; }
   play.yaw = d.yaw; play.phase = 0;
   if (fig) {
     fig.visible = BCAMS[bmCamIdx].id !== 'fpv';
-    const back = -CAR.SEAT_Z * P;
-    fig.position.set(play.x - fx * back, play.y + (CAR.SEAT_Y - 3.59) * PH, play.z - fz * back);
-    fig.rotation.y = d.yaw;
-    fig.userData.legL.rotation.x = -1.35;
-    fig.userData.legR.rotation.x = -1.35;
-    fig.userData.armL.rotation.x = -1.2;
-    fig.userData.armR.rotation.x = -1.2;
+    if (skate) {                                   // sideways stance, arms out
+      fig.position.set(play.x, play.y + 3 * PH, play.z);
+      fig.rotation.y = d.yaw + 0.85;
+      fig.userData.legL.rotation.x = 0.15;
+      fig.userData.legR.rotation.x = -0.3;
+      fig.userData.armL.rotation.x = -0.5;
+      fig.userData.armR.rotation.x = 0.55;
+    } else {
+      const back = -CAR.SEAT_Z * P;
+      fig.position.set(play.x - fx * back, play.y + (CAR.SEAT_Y - 3.59) * PH, play.z - fz * back);
+      fig.rotation.y = d.yaw;
+      fig.userData.legL.rotation.x = -1.35;
+      fig.userData.legR.rotation.x = -1.35;
+      fig.userData.armL.rotation.x = -1.2;
+      fig.userData.armR.rotation.x = -1.2;
+    }
   }
 }
 
@@ -10538,9 +10673,10 @@ function setBeastMode(on) {
     sun.shadow.mapSize.set(2048, 2048);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
     for (const l of lampPool) { l.visible = false; l.distance = 0.22; }
-    Object.assign(play, { x: 21 * P, z: 52 * P, y: BM_PATH_TOP * PH, vy: 0, yaw: Math.PI,
+    Object.assign(play, { x: 32 * P, z: 47 * P, y: 6 * PH, vy: 0, yaw: Math.PI,
                           phase: 0, grounded: true, swimming: false });
-    Object.assign(chase, { theta: Math.PI, phi: Math.PI / 2, dist: 0 });
+    Object.assign(chase, { theta: 0, phi: Math.PI / 2, dist: 0 });
+    bmIntro = 5.2; bmIntroChirp = 0;
     bmClock = BM.DAY_LEN * 0.40;                 // late morning light
     bmLastSky = -1;
     bmCamIdx = 0;
@@ -10573,7 +10709,7 @@ function setBeastMode(on) {
     for (const key of [...bmChunks.keys()]) bmDropChunk(key);
     for (const pool of bmPropPool.values()) pool.mesh.count = 0;
     bmCars.length = 0;
-    for (const inst of bmVehInst.values()) inst.body.count = inst.glass.count = 0;
+    for (const inst of bmVehInst.values()) { inst.body.count = 0; if (inst.glass) inst.glass.count = 0; }
     bmRedInst.count = bmGrnInst.count = 0;
     while (bmPeds.length) bmDropPed(0);
     if (bmHeadInst) { bmHeadInst.count = 0; bmFlashRed.count = 0; bmFlashBlue.count = 0; }
@@ -10608,7 +10744,33 @@ function setBeastMode(on) {
     updateHUD();
   }
 }
-let bmTick = 0;
+let bmTick = 0, bmIntro = 0, bmIntroChirp = 0;
+/* the wake-up: five seconds from the pillow — teddy, the sun on the rug, the
+   open door — then the city is yours (choreography by Grok, condensed) */
+function bmIntroCam(dt) {
+  bmIntro -= dt;
+  const t = 5.2 - bmIntro;
+  if ((t > 1.2 && bmIntroChirp === 0) || (t > 3.9 && bmIntroChirp === 1)) {
+    bmChirp(false); bmIntroChirp++;
+  }
+  const ex = 34.2 * P, ey = 11 * PH, ez = 43.8 * P;
+  const head = play.y + FIG_H * 0.86;
+  let lx, ly, lz, px, py, pz;
+  if (t < 2) {                                     // the teddy on the pillow
+    px = ex; py = ey; pz = ez;
+    lx = 28.5 * P; ly = 9 * PH; lz = 45.5 * P;
+  } else if (t < 3.6) {                            // pan to the open door
+    const f = (t - 2) / 1.6;
+    px = ex; py = ey; pz = ez;
+    lx = (28.5 + f * 4) * P; ly = (9 + f * 4) * PH; lz = (45.5 - f * 5.3) * P;
+  } else {                                         // settle into the player's eyes
+    const f = Math.min(1, (t - 3.6) / 1.5);
+    px = ex + (play.x - ex) * f; py = ey + (head - ey) * f; pz = ez + (play.z - ez) * f;
+    lx = 32.5 * P; ly = (13 - f * 2) * PH; lz = 38 * P;
+  }
+  camera.position.set(px, py, pz);
+  camera.lookAt(lx, ly, lz);
+}
 function stepBeast(dt) {
   bmClock += dt;
   bmTick++;
@@ -10618,9 +10780,15 @@ function stepBeast(dt) {
   if ((bmTick % 12) === 0) {
     if (!bmDrive) bmFindNearCar();
     const btn = document.getElementById('beastDrive');
-    if (bmDrive) { btn.textContent = '⏏ Get out'; btn.classList.remove('hidden'); }
-    else if (bmNearCar) { btn.textContent = '🚗 Drive'; btn.classList.remove('hidden'); }
-    else btn.classList.add('hidden');
+    if (bmDrive) {
+      btn.textContent = bmDrive.kind === 'broom' ? '🧹 Land'
+                      : bmDrive.kind === 'skate' ? '🛹 Hop off' : '⏏ Get out';
+      btn.classList.remove('hidden');
+    } else if (bmNearCar) {
+      const r = BM_VEHICLES[bmNearCar.p.t].ride;
+      btn.textContent = r === 'broom' ? '🧹 Fly' : r === 'skate' ? '🛹 Skate' : '🚗 Drive';
+      btn.classList.remove('hidden');
+    } else btn.classList.add('hidden');
   }
   bmStepTraffic(dt);
   bmStepPeds(dt);
@@ -10631,6 +10799,7 @@ function stepBeast(dt) {
   bmDayNight();
   bmUpdateLamps();
   bmUpdateCamera();
+  if (bmIntro > 0) bmIntroCam(dt);
   if (bmMapCtx && (bmTick % 6) === 0) {
     bmDrawMap(bmMapCtx, 160, 220, true);
     if (bmBigWrap && bmBigWrap.style.display === 'flex')
@@ -10648,6 +10817,12 @@ document.getElementById('beastSprintBtn').onclick = () => {
 document.getElementById('beastDrive').onclick = () => {
   if (bmDrive) bmExitCar(); else bmEnterCar();
 };
+{
+  const jb = document.getElementById('jumpBtn');
+  jb.addEventListener('pointerdown', () => { bmJumpHeld = true; });
+  window.addEventListener('pointerup', () => { bmJumpHeld = false; });
+  window.addEventListener('pointercancel', () => { bmJumpHeld = false; });
+}
 
 let lastT = 0;
 window.__frames = 0;
