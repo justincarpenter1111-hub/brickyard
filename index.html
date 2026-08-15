@@ -8743,6 +8743,21 @@ function bmRail(g, glow, solids, chunk, x0, i) {
   gbox(g, 32, 4, 0.5, cx, 30, 10.25, 0x666A6D);                      // outer parapet
   solids.push([cx - 16, cx + 16, 10, 10.5, 34, 26]);
   gbox(glow, 20, 1.2, 6, cx, 45.6, 7, 0xFFD27A);                     // platform light at night
+  { // Codex's platform machines: tickets in yellow, snacks in red
+    const tx = cx - 11, vz = 8.6;
+    gbox(g, 4, 16, 3, tx, 28 + 8, vz, 0xFFD600);
+    gbox(g, 3, 5, 0.3, tx, 28 + 11, vz + 1.6, 0x29B6F6);
+    gbox(g, 2.5, 0.6, 0.4, tx, 28 + 4.8, vz + 1.65, 0xE53935);
+    gbox(g, 4.4, 2, 3.2, tx, 28 + 17, vz, 0x1565C0);
+    solids.push([tx - 2, tx + 2, vz - 1.5, vz + 1.5, 44, 28]);
+    const vx = cx + 11;
+    gbox(g, 5, 18, 4, vx, 28 + 9, vz, 0xE53935);
+    gbox(g, 3.4, 9, 0.35, vx - 0.45, 28 + 12, vz + 2.1, 0x80DEEA);
+    gbox(g, 0.8, 4, 0.35, vx + 1.65, 28 + 10.5, vz + 2.1, 0xFFEB3B);
+    gbox(g, 5.4, 2, 4.4, vx, 28 + 17, vz, 0xFF7043);
+    solids.push([vx - 2.5, vx + 2.5, vz - 2, vz + 2, 46, 28]);
+    if (bmNightF !== undefined) gbox(glow, 3.6, 9.4, 0.3, vx - 0.45, 28 + 12, vz + 2.3, 0xAFE8F2);
+  }
 }
 function bmGrandCentral(g, glow, solids, chunk, x0) {
   const cx = x0 + 56, gold = 0xB89B68;
@@ -8935,6 +8950,64 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
     bmProp(chunk, t, X(tu), Z(tv), Math.random() * 6, 5);
     solids.push([X(tu) - 2, X(tu) + 2, Z(tv) - 2, Z(tv) + 2, 30, 0]);
   }
+  /* garden dressing from Codex's kit */
+  { // Hills Hoist on the back lawn, washing out
+    const hx = X(8), hz = Z(56);
+    gbox(g, 1, 18, 1, hx, 13, hz, 0x8A8F98);
+    gbox(g, 12, 1, 1, hx, 21.5, hz, 0xB7BCC4);
+    gbox(g, 1, 1, 12, hx, 21.5, hz, 0xB7BCC4);
+    for (const lz of [-4, 0, 4]) gbox(g, 10, 0.25, 0.2, hx, 20.9, hz + lz, 0xD9DEE5);
+    gbox(g, 3, 4, 0.3, hx - 2.5, 18.9, hz - 4, 0x1E88E5);
+    gbox(g, 3, 4, 0.3, hx + 2.5, 18.9, hz + 4, 0xFFD54F);
+    solids.push([hx - 0.7, hx + 0.7, hz - 0.7, hz + 0.7, 22, 0]);
+  }
+  { // letterbox at the gate, flag up
+    const lx = X(21), lz = Z(1.5);
+    gbox(g, 1, 12, 1, lx, 10, lz, 0x455A64);
+    gbox(g, 3, 4, 5, lx, 18, lz, 0x2E7D32);
+    gbox(g, 3.2, 1, 5.2, lx, 20.5, lz, 0x388E3C);
+    gbox(g, 0.3, 4, 0.3, lx + 1.75, 19.5, lz, 0xE53935);
+    gbox(g, 0.8, 1.5, 0.3, lx + 1.75, 22.2, lz, 0xE53935);
+    solids.push([lx - 1.6, lx + 1.6, lz - 2.6, lz + 2.6, 22, 0]);
+  }
+  { // diving board over the pool's west end
+    const dx2 = X(44), dz2 = Z(10);
+    gbox(g, 2, 2, 2, dx2, 7, dz2, 0x1565C0);
+    gbox(g, 1, 2, 1, dx2, 9, dz2, 0x90CAF9);
+    gbox(g, 8, 1, 2, dx2 + 3, 10.5, dz2, 0xF5F5F5);
+    gbox(g, 6, 0.25, 1.6, dx2 + 4, 11.1, dz2, 0x29B6F6);
+    solids.push([dx2 - 1, dx2 + 1, dz2 - 1, dz2 + 1, 10, 0]);
+    solids.push([dx2 + 1, dx2 + 6.5, dz2 - 1, dz2 + 1, 11.2, 9.8]);
+  }
+  { // gazebo on the north lawn, bench inside
+    const gx = X(14), gz = Z(56);
+    for (const [ox, oz] of [[-3.5, -3.5], [3.5, -3.5], [-3.5, 3.5], [3.5, 3.5]]) {
+      gbox(g, 1, 18, 1, gx + ox, 13, gz + oz, 0xF4F4F4);
+      solids.push([gx + ox - 0.6, gx + ox + 0.6, gz + oz - 0.6, gz + oz + 0.6, 22, 0]);
+    }
+    gbox(g, 10, 1, 6, gx, 22.5, gz, 0x2E7D32);
+    gbox(g, 6, 1, 2, gx, 22.5, gz - 4, 0x2E7D32);
+    gbox(g, 6, 1, 2, gx, 22.5, gz + 4, 0x2E7D32);
+    bmProp(chunk, 'prop_bench', gx, gz + 2, Math.PI, 5);
+    solids.push([gx - 2, gx + 2, gz + 1, gz + 3, 10, 0]);
+  }
+  { // pergola walkway from the ring to the pool
+    const px2 = X(35), pz2 = Z(10);
+    for (const [ox, oz] of [[-4.5, -1.5], [4.5, -1.5], [-4.5, 1.5], [4.5, 1.5]]) {
+      gbox(g, 1, 18, 1, px2 + ox, 13, pz2 + oz, 0x8B5A2B);
+      solids.push([px2 + ox - 0.6, px2 + ox + 0.6, pz2 + oz - 0.6, pz2 + oz + 0.6, 22, 0]);
+    }
+    for (const oz of [-1.5, 0, 1.5]) gbox(g, 10, 1, 0.6, px2, 22.5, pz2 + oz, 0xC89255);
+    gbox(g, 1.3, 13, 1.3, px2 - 4.5, 11, pz2 + 1.5, 0xD81B60);   // climbing rose
+  }
+  // batten balustrade along the front veranda (Codex's Queenslander detail)
+  for (let bu = DECK0 + 2; bu < DECK1 - 2; bu += 2) {
+    if (bu > 22 && bu < 38) continue;                       // stairs gap
+    gbox(g, 0.5, 6, 0.4, X(bu), 20, Z(DV0 + 0.6), white);
+  }
+  gbox(g, 1, 2, 1, X(30), ry + 3, Z(36), white);            // roof finial
+  gbox(g, 2, 1, 2, X(30), ry + 4.5, Z(36), white);
+  gbox(g, 0.75, 3, 0.75, X(30), ry + 6.5, Z(36), white);
   bmHomePos.x = X(RC.u); bmHomePos.z = z0 + 14;
 }
 
@@ -10419,9 +10492,27 @@ function bmStepRide() {
   play.yaw = Math.PI / 2;
   if (fig) fig.visible = false;                // tucked inside the coach
 }
+let bmSunbathers = null;
+function bmInitSunbathers() {
+  if (bmSunbathers || !figParts) return;
+  bmSunbathers = [];
+  for (const [x, z, torso] of [[624, -195, 0xE06A9F], [624, -189, 0xD67923]]) {
+    const f = buildFigure({ legs: 0x1E5AA8, torso, arms: torso, face: 'happy',
+                            hair: 'none', hairColor: 0x1B2A34, acc: 'none' });
+    f.position.set(x * P, 8.5 * PH, z * P);
+    f.rotation.y = Math.PI / 2;
+    f.userData.legL.rotation.x = -1.5;             // feet up on the lounger
+    f.userData.legR.rotation.x = -1.5;
+    f.userData.armL.rotation.x = -0.5;
+    f.userData.armR.rotation.x = -2.6;             // one arm behind the head
+    beastRoot.add(f);
+    bmSunbathers.push(f);
+  }
+}
 function bmInitAmbient() {
   if (bmBirdUp) return;
   bmInitTrain();
+  bmInitSunbathers();
   bmBirdUp = new THREE.InstancedMesh(bmBirdGeo(true), propMat, 12);
   bmBirdDn = new THREE.InstancedMesh(bmBirdGeo(false), propMat, 12);
   bmBirdUp.frustumCulled = bmBirdDn.frustumCulled = false;
