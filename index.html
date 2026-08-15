@@ -10381,10 +10381,11 @@ function bmStepTraffic(dt) {
       const room = clear - 3.5;
       want = room <= 0 ? 0 : Math.min(want, Math.sqrt(Math.max(0, 2 * CAR_BRK * room)) * 0.7);
     }
-    // buses and trams call at the shelters on their side of the street
-    if (car.t === 'bus' || car.t === 'tram') {
-      if (car.dwell > 0) { car.dwell -= dt; want = 0; }
-      else for (const ch of bmChunks.values()) {
+    // anything can be told to dwell (the ice-cream van does); buses and
+    // trams also call at the shelters on their side of the street
+    if (car.dwell > 0) { car.dwell -= dt; want = 0; }
+    else if (car.t === 'bus' || car.t === 'tram') {
+      for (const ch of bmChunks.values()) {
         if (!ch.stops) continue;
         for (const st of ch.stops) {
           if (st.d !== car.d || st.key === car.lastStop) continue;
@@ -11349,10 +11350,70 @@ function bmStepLift(dt) {
     }
   }
 }
+/* the ice-cream van pulls over mid-block every so often and plays its
+   jingle; traffic just has to wait, the way it really does */
+let bmVanAt = 55;
+function bmVanChime() {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    [784, 659, 523, 392, 523, 659, 784, 784].forEach((fq, k) => {
+      const o = bmAC.createOscillator(), g2 = bmAC.createGain();
+      o.type = 'triangle'; o.frequency.value = fq;
+      g2.gain.setValueAtTime(0, t0 + k * 0.17);
+      g2.gain.linearRampToValueAtTime(0.09, t0 + k * 0.17 + 0.02);
+      g2.gain.exponentialRampToValueAtTime(0.001, t0 + k * 0.17 + 0.16);
+      o.connect(g2).connect(bmAC._master);
+      o.start(t0 + k * 0.17); o.stop(t0 + k * 0.17 + 0.18);
+    });
+  } catch (e) {}
+}
+function bmStepVanStop(dt) {
+  bmVanAt -= dt;
+  if (bmVanAt > 0) return;
+  for (const c of bmCars) {
+    if (c.t !== 'van' || (c.dwell || 0) > 0 || c.act !== 'cruise') continue;
+    const [dx] = BM_DIRS[c.d];
+    const along = dx === 0 ? c.z : c.x;
+    const off = Math.abs(along - Math.round(along / BM.PITCH) * BM.PITCH);
+    if (off < 34) continue;                             // mid-block, clear of the box
+    if (Math.hypot(c.x - play.x / P, c.z - play.z / P) > 120) continue;
+    c.dwell = 14;
+    bmVanChime();
+    bmVanAt = 90 + Math.random() * 50;
+    return;
+  }
+  bmVanAt = 0.4;                                        // stay armed until one qualifies
+}
+/* clock-tower noon: when the live hands hit twelve near a tower, the city
+   chimes and the birds lift off it */
+let bmNoonArmed = true;
+function bmStepNoon() {
+  const lap = (bmClock / BM.DAY_LEN) * Math.PI * 4 % (Math.PI * 2);
+  if (lap > 0.06) { bmNoonArmed = true; return; }
+  if (!bmNoonArmed) return;
+  bmNoonArmed = false;
+  let tower = null, bd = 180;
+  for (const c of bmChunks.values()) {
+    if (!c.clocks) continue;
+    for (const cl of c.clocks) {
+      const d2 = Math.hypot(cl.x - play.x / P, cl.z - play.z / P);
+      if (d2 < bd) { bd = d2; tower = cl; }
+    }
+  }
+  if (!tower) return;
+  bmChimeStation(true);
+  for (const flock of bmBirdFlocks) {                   // the birds lift off the tower
+    flock.cx = tower.x; flock.cz = tower.z;
+    for (const b of flock.birds) { b.r = 6 + Math.random() * 10; b.w = 1.4 + Math.random() * 0.5; }
+  }
+}
 function bmStepAmbient(dt) {
   bmStepTrain(dt);
   bmStepBoardKid(dt);
   bmStepLift(dt);
+  bmStepVanStop(dt);
+  bmStepNoon();
   if (bmSunbathers && bmSunReact > 0) {              // the loungers sit up at a splash
     bmSunReact -= dt;
     const up = Math.min(1, bmSunReact > 1.6 ? (2.2 - bmSunReact) * 4 : bmSunReact / 1.6);
@@ -11373,6 +11434,8 @@ function bmStepAmbient(dt) {
     for (const b of flock.birds) {
       b.a += b.w * dt;
       b.flap += dt * 9;
+      b.w += (0.7 - b.w) * dt * 0.12;              // a noon scatter settles back down
+      b.r += (22 - b.r) * dt * 0.05;
       const bx = flock.cx + Math.cos(b.a) * b.r, bz = flock.cz + Math.sin(b.a) * b.r;
       const by = (b.h + Math.sin(b.a * 2) * 6) * PH;
       _bmO.position.set(bx * P, by, bz * P);
@@ -11912,11 +11975,12 @@ function bmFootstep(hard) {
     const s2 = bmAC.createBufferSource();
     s2.buffer = buf;
     const f = bmAC.createBiquadFilter();
-    // pavement clicks, grass thuds
-    if (hard) { f.type = 'highpass'; f.frequency.value = 1500; }
-    else { f.type = 'lowpass'; f.frequency.value = 480; }
+    // pavement clicks, grass thuds; left and right land a shade apart
+    const lft = (bmFootstep._l = !bmFootstep._l);
+    if (hard) { f.type = 'highpass'; f.frequency.value = lft ? 1350 : 1550; }
+    else { f.type = 'lowpass'; f.frequency.value = lft ? 430 : 500; }
     const g2 = bmAC.createGain();
-    g2.gain.setValueAtTime(hard ? 0.05 : 0.035, t0);
+    g2.gain.setValueAtTime((hard ? 0.05 : 0.035) * (lft ? 0.9 : 1), t0);
     g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
     s2.connect(f).connect(g2).connect(bmAC._master);
     s2.start(t0);
@@ -11936,7 +12000,8 @@ function bmStepAudio(dt) {
           const offx = sx2 - Math.round(sx2 / BM.PITCH) * BM.PITCH;
           const offz = sz2 - Math.round(sz2 / BM.PITCH) * BM.PITCH;
           bmFootstep(Math.abs(offx) <= 24 || Math.abs(offz) <= 24);
-          bmFootAt = Math.min(0.6, Math.max(0.16, 0.032 / sp));
+          // one hit per FOOT, not per gait cycle — half the stride each time
+          bmFootAt = Math.min(0.3, Math.max(0.09, 0.016 / sp));
         }
       } else bmFootAt = Math.min(bmFootAt, 0.05);
     }
