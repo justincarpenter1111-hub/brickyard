@@ -8784,10 +8784,11 @@ function bmGrandCentral(g, glow, solids, chunk, x0) {
   solids.push([cx - 14, cx + 14, 5, 13, 28, 0]);
   gbox(glow, 26, 2, 2, cx, 60, 0, 0xFFD27A);                         // hall glow
   gbox(g, 0.5, 3, 28, cx - 16.25, 51.5, 0, 0x263746);                // sign band
-  // clock over the west approach
+  // clock over the west approach — hands are live
   gbox(g, 0.6, 8, 8, cx - 16.4, 59, 0, 0xE4D8B4);
-  gbox(g, 0.7, 4, 0.7, cx - 16.7, 60.5, 0, 0x202020);
-  gbox(g, 0.7, 0.7, 2.6, cx - 16.7, 59, 1, 0x202020);
+  gbox(g, 0.8, 1.1, 1.1, cx - 16.75, 59, 0, 0x202020);
+  if (!chunk.clocks) chunk.clocks = [];
+  chunk.clocks.push({ x: cx - 16.9, y: 59, z: 0, nx: -1, nz: 0 });
   // "GRAND CENTRAL" lettering on its own little canvas
   const cv = document.createElement('canvas');
   cv.width = 512; cv.height = 64;
@@ -8823,11 +8824,16 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
     gbox(g, sx, sy, sz, X(u), y, Z(v), col);
     solids.push([X(u) - sx / 2, X(u) + sx / 2, Z(v) - sz / 2, Z(v) + sz / 2, y + sy / 2, y - sy / 2]);
   };
-  // lawn over the whole block, studded like a baseplate
+  // lawn over the whole block, studded like a baseplate — and a matching
+  // ground solid so wheels, feet and boards ride ON it, not inside it
   gbox(g, 64, 0.5, 64, X(32), 4.35, Z(32), 0x2f9e44);
+  solids.push([X(0), X(45), Z(0), Z(64), 4.7, 0]);        // ground, parted around the pool
+  solids.push([X(61), X(64), Z(0), Z(64), 4.7, 0]);
+  solids.push([X(45), X(61), Z(0), Z(3), 4.7, 0]);
+  solids.push([X(45), X(61), Z(17), Z(64), 4.7, 0]);
   bmStuds(g, X(2), Z(2), X(62), Z(62), 4.6, 0x27913C, 10);
   // perimeter hedge with a gate gap at the south drive
-  for (const [hu, hv, sw, sd] of [[13, 1, 24, 1.6], [51, 1, 24, 1.6],
+  for (const [hu, hv, sw, sd] of [[7, 1, 12, 1.6], [57, 1, 12, 1.6],
                                   [32, 63, 62, 1.6], [1, 32, 1.6, 60], [63, 32, 1.6, 60]]) {
     gbox(g, sw, 6, sd, X(hu), 7.5, Z(hv), 0x00852B);
     solids.push([X(hu) - sw / 2, X(hu) + sw / 2, Z(hv) - sd / 2, Z(hv) + sd / 2, 10.5, 0]);
@@ -8918,6 +8924,7 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
   const PU0 = 44, PU1 = 62, PV0 = 2, PV1 = 18;
   gbox(g, PU1 - PU0 + 2, 2, PV1 - PV0 + 2, X((PU0 + PU1) / 2), 5, Z((PV0 + PV1) / 2), 0xC8C8C8);   // coping
   gbox(g, PU1 - PU0 - 2, 1.6, PV1 - PV0 - 2, X((PU0 + PU1) / 2), 4.4, Z((PV0 + PV1) / 2), 0x469BC3); // water
+  gbox(glow, PU1 - PU0 - 4, 1, PV1 - PV0 - 4, X((PU0 + PU1) / 2), 4.6, Z((PV0 + PV1) / 2), 0x7FD8F0); // lit at night
   // coping is a solid rim you step up onto; the water itself is swimmable
   for (const [su, sv, sw, sd] of [[(PU0 + PU1) / 2, PV0, PU1 - PU0 + 2, 1], [(PU0 + PU1) / 2, PV1, PU1 - PU0 + 2, 1],
                                   [PU0, (PV0 + PV1) / 2, 1, PV1 - PV0], [PU1, (PV0 + PV1) / 2, 1, PV1 - PV0]])
@@ -8942,8 +8949,8 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
   bmStuds(g, X(GU - 6), Z(GV - 8), X(GU + 6), Z(GV + 8), 27.2, roofC, 4);
   chunk.parked.push({ t: 'car_red', x: X(GU - 1), z: Z(GV), yaw: Math.PI / 2, y: 4 });
   solids.push([X(GU - 8.5), X(GU + 6.5), Z(GV - 3.2), Z(GV + 3.2), 21, 4]);
-  chunk.parked.push({ t: 'skate', x: X(RC.u - 9), z: Z(RC.v - 11), yaw: Math.PI / 2 + 0.2, y: 5 });
-  chunk.parked.push({ t: 'broom', x: X(44), z: Z(DV0 + 2), yaw: 0.9, y: 18 });   // on the veranda
+  chunk.parked.push({ t: 'skate', x: X(28), z: Z(5.5), yaw: Math.PI / 2 + 0.2, y: 4.8 });
+  chunk.parked.push({ t: 'broom', x: X(47), z: Z(19.5), yaw: 0.9, y: 5.4 });   // by the pool palms
   // garden dressing
   for (const [tu, tv, t] of [[4, 58, 'prop_tree_oak'], [60, 58, 'prop_tree_oak'],
                              [4, 34, 'prop_tree_apple'], [56, 30, 'prop_tree_small']]) {
@@ -9012,7 +9019,7 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
 }
 
 /* the clock tower: a civic landmark you can steer by from three blocks out */
-function bmClockTower(g, glow, solids, R, px0, pz0) {
+function bmClockTower(g, glow, solids, R, px0, pz0, chunk) {
   const cx = px0 + 16, cz = pz0 + 16;
   const stone = 0xC8C8C8, trim2 = 0x897D62;
   gbox(g, 22, 8, 22, cx, 8, cz, trim2);                              // plinth
@@ -9037,11 +9044,13 @@ function bmClockTower(g, glow, solids, R, px0, pz0) {
     const out2 = Math.sign(alongX ? fz2 - cz : fx2 - cx) * 0.35;
     gbox(g, alongX ? 9 : 0.7, 22, alongX ? 0.7 : 9,
          alongX ? fx2 : fx2 + out2, y + 8, alongX ? fz2 + out2 : fz2, 0xF4F4F4);   // face
-    // hands: an hour and a minute box, and a black centre pip
-    gbox(g, alongX ? 0.9 : 1.0, 7, alongX ? 1.0 : 0.9,
-         alongX ? fx2 : fx2 + out2 * 2, y + 9.6, alongX ? fz2 + out2 * 2 : fz2, 0x1B2A34);
-    gbox(g, alongX ? 3.4 : 1.1, 2, alongX ? 1.1 : 3.4,
-         alongX ? fx2 + 1.4 : fx2 + out2 * 2, y + 8, alongX ? fz2 + out2 * 2 : fz2 + 1.4, 0x1B2A34);
+    // a centre pip; the moving hands are instanced so they can tell the time
+    gbox(g, alongX ? 1.1 : 1.2, 1.1, alongX ? 1.2 : 1.1,
+         alongX ? fx2 : fx2 + out2 * 2, y + 8, alongX ? fz2 + out2 * 2 : fz2, 0x1B2A34);
+    if (!chunk.clocks) chunk.clocks = [];
+    chunk.clocks.push({ x: alongX ? fx2 : fx2 + out2 * 2.6, y: y + 8,
+                        z: alongX ? fz2 + out2 * 2.6 : fz2,
+                        nx: alongX ? 0 : Math.sign(fx2 - cx), nz: alongX ? Math.sign(fz2 - cz) : 0 });
     gbox(glow, alongX ? 9.4 : 0.4, 23, alongX ? 0.4 : 9.4,
          alongX ? fx2 : fx2 + out2 * 2.4, y + 8, alongX ? fz2 + out2 * 2.4 : fz2, 0xFFEDC0);
   }
@@ -9273,7 +9282,7 @@ function bmGenChunk(i, j) {
     const towerAt = ((bmSeed(i, j) >>> 8) % 19) === 0 ? ((bmSeed(i, j) >>> 4) & 3) : -1;
     let q = 0;
     for (const qx of [0, 1]) for (const qz of [0, 1]) {
-      if (q++ === towerAt) bmClockTower(g, glow, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32);
+      if (q++ === towerAt) bmClockTower(g, glow, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, chunk);
       else bmBuilding(g, glow, glass, signs, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, qx, qz, district);
     }
     // street trees hug the kerb line, clear of the walking line — face-first
@@ -9981,6 +9990,38 @@ const bmGrnInst = new THREE.InstancedMesh(bmLampGeoR, new THREE.MeshBasicMateria
 bmRedInst.frustumCulled = bmGrnInst.frustumCulled = false;
 bmRedInst.count = bmGrnInst.count = 0;
 beastRoot.add(bmRedInst, bmGrnInst);
+/* clock hands: every face in the city tells the same (fast) time */
+const bmHandGeoH = new THREE.BoxGeometry(0.9 * P, 3.4 * PH, 0.9 * P).translate(0, 1.7 * PH, 0);
+const bmHandGeoM = new THREE.BoxGeometry(0.7 * P, 5 * PH, 0.7 * P).translate(0, 2.5 * PH, 0);
+const bmHourInst = new THREE.InstancedMesh(bmHandGeoH, new THREE.MeshBasicMaterial({ color: 0x1B2A34 }), 48);
+const bmMinInst = new THREE.InstancedMesh(bmHandGeoM, new THREE.MeshBasicMaterial({ color: 0x1B2A34 }), 48);
+bmHourInst.frustumCulled = bmMinInst.frustumCulled = false;
+bmHourInst.count = bmMinInst.count = 0;
+beastRoot.add(bmHourInst, bmMinInst);
+const _bmAxis = new THREE.Vector3(), _bmQ = new THREE.Object3D();
+function bmSyncClocks() {
+  const hourA = (bmClock / BM.DAY_LEN) * Math.PI * 4;   // two laps of the dial per day
+  const minA = hourA * 12;
+  let n = 0;
+  for (const c of bmChunks.values()) {
+    if (!c.clocks) continue;
+    for (const cl of c.clocks) {
+      if (n >= 48) break;
+      _bmAxis.set(cl.nx, 0, cl.nz);
+      _bmQ.position.set(cl.x * P, cl.y * PH, cl.z * P);
+      _bmQ.quaternion.setFromAxisAngle(_bmAxis, -hourA);
+      _bmQ.updateMatrix();
+      bmHourInst.setMatrixAt(n, _bmQ.matrix);
+      _bmQ.quaternion.setFromAxisAngle(_bmAxis, -minA);
+      _bmQ.updateMatrix();
+      bmMinInst.setMatrixAt(n, _bmQ.matrix);
+      n++;
+    }
+  }
+  bmHourInst.count = bmMinInst.count = n;
+  bmHourInst.instanceMatrix.needsUpdate = true;
+  bmMinInst.instanceMatrix.needsUpdate = true;
+}
 let bmLastSig = '';
 let bmLightsDirty = true;
 function bmSyncLights() {
@@ -10012,7 +10053,15 @@ function bmSyncLights() {
    Any car parked in a kerb bay can be taken. Entering lifts it out of the
    chunk's props and solids; leaving parks it where it stands, snapped to one
    of sixteen facings, and hands it back to the chunk.                      */
-let bmDrive = null, bmNearCar = null;
+let bmDrive = null, bmNearCar = null, bmSpark = null;
+function bmEnsureSpark() {
+  if (bmSpark) return;
+  bmSpark = new THREE.Mesh(new THREE.BoxGeometry(1.2 * P, 1.2 * PH, 1.2 * P),
+    new THREE.MeshBasicMaterial({ color: 0xFFE066, transparent: true, opacity: 0.9,
+                                  blending: THREE.AdditiveBlending, depthWrite: false }));
+  bmSpark.visible = false;
+  beastRoot.add(bmSpark);
+}
 function bmFindNearCar() {
   bmNearCar = null;
   let bd = 14;
@@ -10045,6 +10094,7 @@ function bmEnterCar() {
 }
 function bmExitCar() {
   if (!bmDrive) return;
+  if (bmSpark) bmSpark.visible = false;
   const d = bmDrive;
   const STEP16 = Math.PI / 8;
   const yaw = Math.round(d.yaw / STEP16) * STEP16;
@@ -10130,7 +10180,7 @@ function bmStepDrive(dt) {
       !bmBlocked(nx * P, nz * P, feet, CLIMB_RIDE, skate ? 0.008 : 0.02)) { d.x = nx; d.z = nz; }
   else d.v = 0;
   play.x = d.x * P; play.z = d.z * P;
-  const gfloor = bmGroundPl(d.x, d.z) * PH;
+  const gfloor = bmGroundAt(d.x * P, d.z * P, play.y + 0.001, CLIMB_RIDE);
   if (skate) {                                     // skateboards ollie — real air
     // kerb grinds: hit the kerb line fast and shallow and the board locks on
     if (!d.grind && play.grounded && d.v > 9) {
@@ -10152,14 +10202,21 @@ function bmStepDrive(dt) {
     if (d.grind) {
       d.grind.t += dt;
       d.yaw = d.grind.yaw;                         // locked on the rail
+      bmEnsureSpark();
+      bmSpark.visible = true;
+      bmSpark.position.set(play.x - Math.sin(d.yaw) * 2.4 * P,
+                           4.6 * PH, play.z - Math.cos(d.yaw) * 2.4 * P);
+      bmSpark.scale.setScalar(0.6 + Math.random() * 1.1);
       play.y = 5.2 * PH;                           // riding the kerb stones
       play.vy = 0; play.grounded = true;
       if (mag > 0.6 && d.grind.t > 0.4 || d.v < 6 || d.grind.t > 2.5) {
         d.grind = null;
+        if (bmSpark) bmSpark.visible = false;
         play.vy = 0.11;                            // hop off with style
         play.grounded = false;
       }
     } else {
+      if (bmSpark) bmSpark.visible = false;
       play.vy -= GRAV * dt;
       play.y += play.vy * dt;
       if (play.y <= gfloor) { play.y = gfloor; play.vy = 0; play.grounded = true; }
@@ -11422,6 +11479,7 @@ function setBeastMode(on) {
                           phase: 0, grounded: true, swimming: false });
     Object.assign(chase, { theta: -Math.PI / 2, phi: Math.PI / 2, dist: 0 });
     bmIntro = 5.2; bmIntroChirp = 0;
+    bmWeatherAt = 200; bmRainTarget = 0;             // no rain on the first morning
     bmClock = BM.DAY_LEN * 0.40;                 // late morning light
     bmLastSky = -1;
     bmCamIdx = 0;
@@ -11458,6 +11516,7 @@ function setBeastMode(on) {
     bmCars.length = 0;
     for (const inst of bmVehInst.values()) { inst.body.count = 0; if (inst.glass) inst.glass.count = 0; }
     bmRedInst.count = bmGrnInst.count = 0;
+    bmHourInst.count = bmMinInst.count = 0;
     while (bmPeds.length) bmDropPed(0);
     if (bmHeadInst) { bmHeadInst.count = 0; bmFlashRed.count = 0; bmFlashBlue.count = 0; }
     if (bmAC) { try { bmAC.suspend(); } catch (e) {} }
@@ -11499,7 +11558,10 @@ let bmTick = 0, bmIntro = 0, bmIntroChirp = 0;
    open door — then the city is yours (choreography by Grok, condensed) */
 function bmIntroCam(dt) {
   bmIntro -= dt;
-  if (bmIntro <= 0) toast('Out through the door — the city is yours!');
+  if (bmIntro <= 0) {
+    if (BCAMS[bmCamIdx].id === 'fpv') bmSetCam(1);   // let them SEE their minifig at home
+    toast('Morning! The veranda is this way ➜');
+  }
   const t = 5.2 - bmIntro;
   if ((t > 1.2 && bmIntroChirp === 0) || (t > 3.9 && bmIntroChirp === 1)) {
     bmChirp(false); bmIntroChirp++;
@@ -11552,6 +11614,7 @@ function stepBeast(dt) {
   bmStepTraffic(dt);
   bmStepPeds(dt);
   bmStepAmbient(dt);
+  if ((bmTick % 4) === 0) bmSyncClocks();
   bmStepWeather(dt);
   bmStepAudio(dt);
   bmSyncLights();
