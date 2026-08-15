@@ -10346,6 +10346,16 @@ function bmStepPeds(dt) {
           }
           adv = p.v * 1.25 * dt;                  // a touch brisker on the road
         }
+        {
+          const pdx = play.x / P - p.x, pdz = play.z / P - p.z;
+          if (pdx * pdx + pdz * pdz < 12) {          // someone's in the way — step around
+            adv *= 0.3;
+            const pLat = alongZ ? play.x / P - line : play.z / P - line;
+            lat += (lat >= pLat ? 1 : -1) * dt * 6;
+            const s2 = Math.sign(lat) || 1;
+            lat = s2 * Math.min(23, Math.max(15, Math.abs(lat)));
+          }
+        }
         if (alongZ) { p.x = line + lat; p.z += fwd * adv; }
         else { p.z = line + lat; p.x += fwd * adv; }
         p.yaw = alongZ ? (fwd > 0 ? 0 : Math.PI) : (fwd > 0 ? Math.PI / 2 : -Math.PI / 2);
@@ -10492,7 +10502,20 @@ function bmStepRide() {
   play.yaw = Math.PI / 2;
   if (fig) fig.visible = false;                // tucked inside the coach
 }
-let bmSunbathers = null;
+let bmSunbathers = null, bmSunReact = 0, bmPoolPip = false;
+function bmSqueal() {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    const o = bmAC.createOscillator(), g2 = bmAC.createGain();
+    o.frequency.setValueAtTime(1800, t0);
+    o.frequency.exponentialRampToValueAtTime(2400, t0 + 0.09);
+    g2.gain.setValueAtTime(0.08, t0);
+    g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.14);
+    o.connect(g2).connect(bmAC._master);
+    o.start(t0); o.stop(t0 + 0.15);
+  } catch (e) {}
+}
 function bmInitSunbathers() {
   if (bmSunbathers || !figParts) return;
   bmSunbathers = [];
@@ -10574,6 +10597,16 @@ function bmInitAmbient() {
 }
 function bmStepAmbient(dt) {
   bmStepTrain(dt);
+  if (bmSunbathers && bmSunReact > 0) {              // the loungers sit up at a splash
+    bmSunReact -= dt;
+    const up = Math.min(1, bmSunReact > 1.6 ? (2.2 - bmSunReact) * 4 : bmSunReact / 1.6);
+    for (const f of bmSunbathers) {
+      f.userData.legL.rotation.x = -1.5 + up * 0.9;
+      f.userData.legR.rotation.x = -1.5 + up * 0.9;
+      f.userData.armR.rotation.x = -2.6 + up * 1.4;
+      f.rotation.x = -up * 0.25;
+    }
+  }
   const px = play.x / P, pz = play.z / P;
   // birds: two loose flocks circling near the player — they sit out the rain
   let n = 0, m = 0;
@@ -10811,16 +10844,20 @@ function bmStepWalk(dt) {
               && play.y < 4.5 * PH;
   if (inPool && !play.swimming) {                   // the cannonball moment
     bmSplashSound(play.vy < -0.09);
+    if (play.vy < -0.09) { bmSunReact = 2.2; bmSqueal(); }
     play.vy = 0;
   }
   play.swimming = inPool;
   if (inPool) {
-    if (play.vy > 0.02) play.grounded = false;      // mid-leap out of the water — let it fly
-    else {
+    if (play.vy > 0.02) {
+      play.grounded = false;                        // mid-leap out of the water — let it fly
+      if (!bmPoolPip) { bmPoolPip = true; bmSqueal(); }
+    } else {
+      bmPoolPip = false;
       play.y = 2.4 * PH + Math.sin(performance.now() / 420) * 0.0008;
       play.vy = 0; play.grounded = true;
     }
-  }
+  } else bmPoolPip = false;
   updateSplash(inPool, play.x, play.y + 4.5 * PH, play.z, speed > 0.01);
   if (fig) {
     if (inPool) {
@@ -10839,7 +10876,9 @@ function bmStepWalk(dt) {
   }
   updateFigTransform();
 }
-function bmUpdateCamera() {
+const bmCamSmooth = new THREE.Vector3();
+let bmCamSmoothOn = false;
+function bmUpdateCamera(dt) {
   const c = BCAMS[bmCamIdx];
   const head = play.y + FIG_H * 0.86;
   if (bmRideTrain) {
@@ -10906,7 +10945,19 @@ function bmUpdateCamera() {
   while (s > 0.3 && bmSolidPoint(play.x + dx * chase.dist * s, play.z + dz * chase.dist * s,
                                  pivot + dy * chase.dist * s)) s -= 0.1;
   const d = chase.dist * s;
-  camera.position.set(play.x + dx * d, Math.max(0.004, pivot + dy * d), play.z + dz * d);
+  const tx = play.x + dx * d, ty = Math.max(0.004, pivot + dy * d), tz = play.z + dz * d;
+  // critically-damped follow: acceleration tugs the camera, braking eases it in
+  if (!bmCamSmoothOn || bmCamSmooth.distanceTo(camera.position) > 1 ||
+      Math.hypot(tx - bmCamSmooth.x, ty - bmCamSmooth.y, tz - bmCamSmooth.z) > 0.6) {
+    bmCamSmooth.set(tx, ty, tz);
+    bmCamSmoothOn = true;
+  } else {
+    const k = Math.min(1, (dt || 0.016) * 11);
+    bmCamSmooth.x += (tx - bmCamSmooth.x) * k;
+    bmCamSmooth.y += (ty - bmCamSmooth.y) * k;
+    bmCamSmooth.z += (tz - bmCamSmooth.z) * k;
+  }
+  camera.position.copy(bmCamSmooth);
   camera.lookAt(play.x, play.y + (c.id === 'shoulder' ? FIG_H * 0.8 : 0.022)
                      + Math.max(0, chase.phi - Math.PI / 2) * 0.055, play.z);
 }
@@ -11294,8 +11345,16 @@ function bmNavStep() {
   const camYaw = chase.theta + Math.PI;               // where the camera is looking
   const rel = Math.atan2(dx, dz) - camYaw;
   bmNavArrow.style.transform = 'rotate(' + ((-rel * 180 / Math.PI) - 90).toFixed(0) + 'deg)';
+  let hint = '';
+  if (dist >= 40) {                                   // which way at the next corner?
+    const headYaw = play.yaw;
+    const relT = ((Math.atan2(dx, dz) - headYaw) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+    hint = Math.abs(relT) < 0.5 ? ' · straight on'
+         : Math.abs(relT) > 2.6 ? ' · turn around'
+         : relT > 0 ? ' · left' : ' · right';
+  }
   bmNavChip._lbl.textContent = dist < 40 ? BM_NAV[bmNavIdx]
-                                         : BM_NAV[bmNavIdx] + ' · ' + Math.round(dist);
+                                         : BM_NAV[bmNavIdx] + ' · ' + Math.round(dist) + hint;
   bmNavChip.style.display = 'flex';
   if (dist < 40) {                                    // close: the pillar lands as a ground ring
     bmNavBeacon.visible = true;
@@ -11498,7 +11557,7 @@ function stepBeast(dt) {
   bmSyncLights();
   bmDayNight();
   bmUpdateLamps();
-  bmUpdateCamera();
+  bmUpdateCamera(dt);
   if (bmIntro > 0) bmIntroCam(dt);
   if ((bmTick % 6) === 0) bmNavStep();
   if (bmMapCtx && (bmTick % 6) === 0) {
