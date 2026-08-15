@@ -2162,7 +2162,7 @@ function updateFigTransform() {
   if (!fig) return;
   // swimming: drop him so only head and shoulders clear the surface
   const sink = play.swimming ? SWIM_SINK * PH : 0;
-  fig.position.set(play.x, play.y - sink, play.z);
+  fig.position.set(play.x, play.y - sink + (play.bob || 0), play.z);
   fig.rotation.y = play.yaw;
 }
 const SWIM_SINK = 7.2;      // plates — a minifig's shoulders sit about here
@@ -2361,12 +2361,21 @@ function stepPlay(dt) {
       fig.userData.armR.rotation.x = -1.4 - s * 0.9;
       fig.userData.legL.rotation.x = s * 0.35;
       fig.userData.legR.rotation.x = -s * 0.35;
+      play.bob = 0; fig.rotation.z = 0;
     } else {
-      const s = Math.sin(play.phase) * Math.min(1, speed * 25);
-      fig.userData.legL.rotation.x = s * 0.75;
-      fig.userData.legR.rotation.x = -s * 0.75;
-      fig.userData.armL.rotation.x = -s * 0.65;
-      fig.userData.armR.rotation.x = s * 0.65;
+      // the residuals are what sell the plastic: feet that PLANT (eased, not
+      // pure sine), a hip bob twice a stride, a whisper of torso roll, and
+      // arms that hang a touch unevenly at rest
+      const w = Math.min(1, speed * 25);
+      const s = Math.sin(play.phase) * w;
+      const e = Math.sign(s) * Math.pow(Math.abs(s), 0.8);
+      fig.userData.legL.rotation.x = e * 0.75;
+      fig.userData.legR.rotation.x = -e * 0.75;
+      fig.userData.armL.rotation.x = -s * 0.65 - 0.04;   // arms hang a touch unevenly
+      fig.userData.armR.rotation.x = s * 0.65 + 0.025;
+      // Codex's numbers: bob bottoms out on each foot strike, ±0.16 plates
+      play.bob = play.grounded ? w * (1 + Math.cos(2 * play.phase)) * 0.000512 : 0;
+      fig.rotation.z = Math.sin(play.phase) * 0.026 * w;   // lean over the stance leg
     }
   }
   updateFigTransform();
@@ -8600,24 +8609,39 @@ function bmSitter(chunk, x, z, yaw, yPl) {
 function bmOpening(g, glow, glass, face, wallAt, a, y, w, h, frameCol, lit) {
   const alongX = face >= 2;                 // the face's length runs along x
   const out = (face === 0 || face === 2) ? -1 : 1;
-  const fx = alongX ? a : wallAt + out * 0.28, fz = alongX ? wallAt + out * 0.28 : a;
-  const sx = alongX ? w + 1 : 0.7, sz = alongX ? 0.7 : w + 1;
-  gbox(g, sx, h + 2, sz, fx, y + h / 2, fz, frameCol);                       // frame
-  if (w <= 8) {          // ordinary windows get a dark recess; shopfronts stay see-through
-    const rx = alongX ? a : wallAt + out * 0.3, rz = alongX ? wallAt + out * 0.3 : a;
-    gbox(g, alongX ? w + 0.2 : 0.25, h + 0.4, alongX ? 0.25 : w + 0.2, rx, y + h / 2, rz, 0x10161C);
+  // a face-hugging box: wid along the face, hpl tall, centred `depth` proud
+  const F = (wid, hpl, depth, at, ycl, hex, thick) => {
+    const px = alongX ? at : wallAt + out * depth, pz = alongX ? wallAt + out * depth : at;
+    gbox(g, alongX ? wid : (thick || 0.5), hpl, alongX ? (thick || 0.5) : wid, px, ycl, pz, hex);
+  };
+  const paneOut = w <= 8 ? 0.34 : 0.5;
+  if (w <= 8) {
+    // Codex's reveal kit: the pane sits nearly ON the wall and the frame ring
+    // stands proud of it — an actual geometry step, so the wall reads thick.
+    // The sill projects furthest and throws the shadow line.
+    F(w + 0.8, h + 1, 0.30, a, y + h / 2, 0x1A2026);                        // reveal shadow
+    F(w + 1.6, 2, 0.55, a, y + h + 1, frameCol);                            // lintel
+    F(w + 1.4, 1.2, 0.62, a, y - 0.6, frameCol, 0.8);                       // sill
+    for (const sgn of [-1, 1])
+      F(0.7, h + 2, 0.5, a + sgn * (w / 2 + 0.35), y + h / 2, frameCol, 0.7); // jambs
+  } else {
+    // shopfronts keep the flat casing — the interior diorama is their depth
+    F(w + 1, h + 2, 0.28, a, y + h / 2, frameCol, 0.7);
   }
-  const gx = alongX ? a : wallAt + out * 0.5, gz = alongX ? wallAt + out * 0.5 : a;
+  const gx = alongX ? a : wallAt + out * paneOut, gz = alongX ? wallAt + out * paneOut : a;
   gbox(glass || g, alongX ? w : 0.3, h, alongX ? 0.3 : w, gx, y + h / 2, gz, 0xAFD3E4);   // the pane
   if (lit && glow) {
-    const lx = alongX ? a : wallAt + out * 0.62, lz = alongX ? wallAt + out * 0.62 : a;
+    const gOut = paneOut + 0.1;
+    const gw = w > 8 ? w + 0.6 : w - 0.4;
+    const lx = alongX ? a : wallAt + out * gOut, lz = alongX ? wallAt + out * gOut : a;
     // a whole shopfront at full blaze flattens the facade — big panes glow softer
-    gbox(glow, alongX ? w + 0.6 : 0.3, h + 1, alongX ? 0.3 : w + 0.6, lx, y + h / 2, lz,
+    gbox(glow, alongX ? gw : 0.3, h + (w > 8 ? 1 : -0.6), alongX ? 0.3 : gw, lx, y + h / 2, lz,
          w > 8 ? 0xC49E6C : 0xFFDf9E);
     // sometimes, someone stands at the lit window — a dark shape in the warmth
     if (Math.abs(Math.sin(a * 12.9898 + y * 78.233)) % 1 < 0.2) {
-      const sx2 = alongX ? a + (Math.sin(a * 3.7) * w) / 3 : wallAt + out * 0.7;
-      const sz2 = alongX ? wallAt + out * 0.7 : a + (Math.sin(a * 3.7) * w) / 3;
+      const sOut = gOut + 0.08;
+      const sx2 = alongX ? a + (Math.sin(a * 3.7) * w) / 3 : wallAt + out * sOut;
+      const sz2 = alongX ? wallAt + out * sOut : a + (Math.sin(a * 3.7) * w) / 3;
       gbox(glow, alongX ? 1.6 : 0.25, h * 0.55, alongX ? 0.25 : 1.6, sx2, y + h * 0.32, sz2, 0x14100C);
       gbox(glow, alongX ? 1.0 : 0.25, 2.4, alongX ? 0.25 : 1.0, sx2, y + h * 0.62 + 1, sz2, 0x14100C);
     }
