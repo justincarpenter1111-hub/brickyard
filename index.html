@@ -2125,14 +2125,18 @@ function refreshFig() {
   scene.add(fig);
   updateFigTransform();
 }
-// A ring of white chunks that bob around him while he swims.
+// Expanding translucent ripple discs and a hopping droplet around a swimmer —
+// the old ring of solid white cubes read as ice, not water.
 const splash = new THREE.Group();
 {
-  const m = new THREE.MeshLambertMaterial({ color: 0xF2FAFF });
-  for (let i = 0; i < 8; i++) {
-    const q = new THREE.Mesh(new THREE.BoxGeometry(0.0032, 0.0014, 0.0032), m);
-    splash.add(q);
+  const discGeo = new THREE.CylinderGeometry(0.0028, 0.0032, 0.0004, 14);
+  for (let i = 0; i < 4; i++) {
+    const m = new THREE.MeshLambertMaterial({ color: 0xF2FAFF, transparent: true,
+                                             opacity: 0.55, depthWrite: false });
+    splash.add(new THREE.Mesh(discGeo, m));
   }
+  splash.add(new THREE.Mesh(new THREE.SphereGeometry(0.0009, 8, 6),
+    new THREE.MeshLambertMaterial({ color: 0xF2FAFF })));
   splash.visible = false;
   scene.add(splash);
 }
@@ -2141,13 +2145,18 @@ function updateSplash(on, x, y, z, moving) {
   if (!on) return;
   const t = performance.now() / 220;
   splash.position.set(x, y, z);
-  splash.children.forEach((q, i) => {
-    const a = i / 8 * Math.PI * 2 + t * 0.5;
-    const r = 0.010 + Math.sin(t * 2 + i) * 0.0022 + (moving ? 0.004 : 0);
-    q.position.set(Math.cos(a) * r, Math.abs(Math.sin(t * 3 + i)) * 0.0022, Math.sin(a) * r);
-    q.rotation.y = a;
-    q.scale.setScalar(moving ? 1 : 0.6);
-  });
+  for (let i = 0; i < 4; i++) {
+    const q = splash.children[i];
+    const ph = (t * 0.55 + i / 4) % 1;                // each disc rides its own ripple out
+    const a = i / 4 * Math.PI * 2 + t * 0.35;
+    const r = 0.004 + ph * (moving ? 0.009 : 0.005);
+    q.position.set(Math.cos(a) * r * 0.6, 0.0002, Math.sin(a) * r * 0.6);
+    q.scale.set(0.5 + ph * 1.4, 1, 0.5 + ph * 1.4);
+    q.material.opacity = 0.55 * (1 - ph);
+  }
+  const drop = splash.children[4];
+  drop.visible = moving;
+  drop.position.set(0.002, 0.0008 + Math.abs(Math.sin(t * 3)) * 0.0028, -0.0035);
 }
 function updateFigTransform() {
   if (!fig) return;
@@ -7969,7 +7978,9 @@ function carGeo(body, trim, glassOut) {
   const g = [], { W, WB, WR, AX, SEAT_Y, SEAT_Z, WHEEL_Y, WHEEL_Z } = CAR;
   const glass = 0x9DC3D4, dark = LC.dgrey;
   const G = glassOut || g;
-  for (const sz of [-WB, WB]) for (const sx of [-2.1, 2.1])        // front is +z
+  // Beast Mode (glassOut set) draws wheels as a spinning instanced mesh
+  // instead; only the classic prop cars keep their tyres baked in.
+  if (!glassOut) for (const sz of [-WB, WB]) for (const sx of [-2.1, 2.1])   // front is +z
     bmTyre(g, WR, 2.6, sx, AX, sz);
   gbox(g, 4.4, 1, 13.6, 0, 1.5, 0, dark);                          // chassis plate
   gbox(g, 5.2, 1, 13.6, 0, 2.5, 0, body);                          // floor pan
@@ -8990,7 +9001,9 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
   solids.push([X(61), X(64), Z(0), Z(64), 4.7, 0]);
   solids.push([X(45), X(61), Z(0), Z(3), 4.7, 0]);
   solids.push([X(45), X(61), Z(17), Z(64), 4.7, 0]);
-  bmStuds(g, X(2), Z(2), X(62), Z(62), 4.6, 0x27913C, 10);
+  // lawn studs skip the pool rect — they used to poke up through the water
+  bmStuds(g, X(2), Z(2), X(42), Z(62), 4.6, 0x27913C, 10);
+  bmStuds(g, X(43), Z(20), X(62), Z(62), 4.6, 0x27913C, 10);
   // perimeter hedge with a gate gap at the south drive
   for (const [hu, hv, sw, sd] of [[7, 1, 12, 1.6], [57, 1, 12, 1.6],
                                   [32, 63, 62, 1.6], [1, 32, 1.6, 60], [63, 32, 1.6, 60]]) {
@@ -9081,9 +9094,16 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
   bmProp(chunk, 'prop_potted_plant', X(48), Z(28.5), 0, 17);
   /* the big pool, east lawn, with palms and loungers */
   const PU0 = 44, PU1 = 62, PV0 = 2, PV1 = 18;
-  gbox(g, PU1 - PU0 + 2, 2, PV1 - PV0 + 2, X((PU0 + PU1) / 2), 5, Z((PV0 + PV1) / 2), 0xC8C8C8);   // coping
-  gbox(g, PU1 - PU0 - 2, 1.6, PV1 - PV0 - 2, X((PU0 + PU1) / 2), 4.4, Z((PV0 + PV1) / 2), 0x469BC3); // water
-  gbox(glow, PU1 - PU0 - 4, 1, PV1 - PV0 - 4, X((PU0 + PU1) / 2), 4.6, Z((PV0 + PV1) / 2), 0x7FD8F0); // lit at night
+  const PW = PU1 - PU0, PD = PV1 - PV0, PCU = (PU0 + PU1) / 2, PCV = (PV0 + PV1) / 2;
+  // coping is a RING, not a slab — a slab here once buried the water entirely
+  gbox(g, PW + 2, 2, 2, X(PCU), 5, Z(PV0), 0xC8C8C8);
+  gbox(g, PW + 2, 2, 2, X(PCU), 5, Z(PV1), 0xC8C8C8);
+  gbox(g, 2, 2, PD - 2, X(PU0), 5, Z(PCV), 0xC8C8C8);
+  gbox(g, 2, 2, PD - 2, X(PU1), 5, Z(PCV), 0xC8C8C8);
+  // two-depth water a plate below the rim: dark deep end under the board
+  gbox(g, (PW - 2) / 2, 1.6, PD - 2, X(PCU - (PW - 2) / 4), 4.2, Z(PCV), 0x2F6FA6);
+  gbox(g, (PW - 2) / 2, 1.6, PD - 2, X(PCU + (PW - 2) / 4), 4.2, Z(PCV), 0x54A8CC);
+  gbox(glow, PW - 4, 1, PD - 4, X(PCU), 4.65, Z(PCV), 0x7FD8F0);   // pool light, peeks after dark
   // coping is a solid rim you step up onto; the water itself is swimmable
   for (const [su, sv, sw, sd] of [[(PU0 + PU1) / 2, PV0, PU1 - PU0 + 2, 1], [(PU0 + PU1) / 2, PV1, PU1 - PU0 + 2, 1],
                                   [PU0, (PV0 + PV1) / 2, 1, PV1 - PV0], [PU1, (PV0 + PV1) / 2, 1, PV1 - PV0]])
@@ -9148,6 +9168,15 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
     gbox(g, 6, 0.25, 1.6, dx2 + 4, 11.1, dz2, 0x29B6F6);
     solids.push([dx2 - 1, dx2 + 1, dz2 - 1, dz2 + 1, 10, 0]);
     solids.push([dx2 + 1, dx2 + 6.5, dz2 - 1, dz2 + 1, 11.2, 9.8]);
+  }
+  { // entry ladder at the shallow east end — a pool you can climb out of
+    const lx2 = X(60.6), lz2 = Z(8);
+    for (const oz of [-1.1, 1.1]) {
+      gbox(g, 0.45, 10, 0.45, lx2, 6, lz2 + oz, 0xB7BCC4);          // rails
+      gbox(g, 1.8, 0.45, 0.45, lx2 + 0.85, 11.2, lz2 + oz, 0xB7BCC4); // curl onto the deck
+    }
+    for (let rn = 0; rn < 3; rn++)
+      gbox(g, 0.4, 0.5, 2.0, lx2, 2.8 + rn * 2.6, lz2, 0xD9DEE5);   // rungs
   }
   { // gazebo on the north lawn, bench inside
     const gx = X(14), gz = Z(56);
@@ -9537,6 +9566,7 @@ function bmStreamChunks(budget) {
 /* ---------- instanced props (trees, lamps, benches, parked cars) ---------- */
 const bmPropPool = new Map();     // type -> { mesh, cap }
 const _bmO = new THREE.Object3D();
+const _bmE = new THREE.Euler(0, 0, 0, 'YXZ');   // yaw first, then axle spin
 function bmSyncProps() {
   if (!bmPropsDirty) return;
   bmPropsDirty = false;
@@ -9649,9 +9679,34 @@ const BM_GLASS_C = 0x9DC3D4;
 /* ---- the Beast Mode garage ----
    Every vehicle is built from the driver out at true City scale, with its
    glazing in a second geometry so glass can actually be seen through.      */
-function bmVehWheels(g, axles, half = 2.1) {
-  for (const sz of axles) for (const sx of [-half, half])
-    bmTyre(g, 1.9, 2.7, sx, 4.75, sz);
+/* Wheels are NOT baked into the bodies any more: a lathe tyre is a solid of
+   revolution, so a baked one can never visibly turn. Every Beast vehicle
+   shares one instanced wheel (with hub nuts — the detail the eye tracks) and
+   the axle positions live here. Same numbers the old baked calls used. */
+function bmAxleSet(axles, half) {
+  const w = [];
+  for (const sz of axles) for (const sx of [-half, half]) w.push([sx, 4.75, sz]);
+  return w;
+}
+const BM_SEDAN_W = bmAxleSet([-4, 4], 2.1);
+const BM_WHEELS = {
+  car_red: BM_SEDAN_W, car_blue: BM_SEDAN_W, car_yellow: BM_SEDAN_W,
+  car_black: BM_SEDAN_W, taxi: BM_SEDAN_W, police: BM_SEDAN_W,
+  van: bmAxleSet([-5.5, 5.5], 2.1),
+  bus: bmAxleSet([-10.5, 10.5], 2.6),
+  truck: bmAxleSet([8, -3.5, -7.5], 2.4),
+};
+let bmWheelInst = null;
+const BM_WHEEL_MAX = 640;
+function bmWheelGeo() {
+  const g = [];
+  bmTyre(g, 1.9, 2.65, 0, 0, 0);
+  // hub face sits at ±2.65 plates * 0.55 ≈ ±0.58 studs along the axle
+  for (const fx of [-0.62, 0.62]) for (let n = 0; n < 5; n++) {
+    const a = n / 5 * Math.PI * 2;
+    gbox(g, 0.3, 0.75, 0.3, fx, Math.sin(a) * 0.45 * 2.5, Math.cos(a) * 0.45, 0x4A4A4A);
+  }
+  return gmerge(g);
 }
 function bmSedanGeo(body, trim, extra) {
   const gl = [];
@@ -9683,7 +9738,6 @@ function bmPoliceGeo() {
 function bmVanGeo() {
   const g = [], gl = [];
   const pink = 0xE06A9F, cream = 0xF4EAD5;
-  bmVehWheels(g, [-5.5, 5.5]);
   gbox(g, 4.4, 1, 16.4, 0, 1.5, 0, LC.dgrey);                  // chassis
   gbox(g, 5.4, 1, 16.4, 0, 2.5, 0, LC.white);                  // floor
   gbox(g, 5.6, 4, 3.6, 0, 5, 7.2, LC.white);                   // nose
@@ -9712,7 +9766,6 @@ function bmVanGeo() {
 function bmBusGeo() {
   const g = [], gl = [];
   const red = 0xB40000, white = 0xF4F4F4;
-  bmVehWheels(g, [-10.5, 10.5], 2.6);
   gbox(g, 5.6, 1.2, 30, 0, 1.6, 0, LC.dgrey);                  // frame
   gbox(g, 7, 9, 31, 0, 7, 0, red);                             // lower body
   for (const sx of [-3.3, 3.3]) {
@@ -9732,7 +9785,6 @@ function bmBusGeo() {
 function bmTruckGeo() {
   const g = [], gl = [];
   const cab = 0x1E5AA8, boxc = 0xF4F4F4;
-  bmVehWheels(g, [8, -3.5, -7.5], 2.4);
   gbox(g, 5, 1.2, 22.5, 0, 1.7, 0, LC.dgrey);                  // frame
   gbox(g, 6.6, 8, 6.4, 0, 7.5, 8.2, cab);                      // cab
   gbox(gl, 5.8, 5.6, 0.5, 0, 14.2, 11.2, BM_GLASS_C, 0, 0.12); // windscreen
@@ -9862,6 +9914,11 @@ function bmInitCarMeshes() {
     beastRoot.add(mb);
     bmVehInst.set(t, { body: mb, glass: mg });
   }
+  bmWheelInst = new THREE.InstancedMesh(bmWheelGeo(), propMat, BM_WHEEL_MAX);
+  bmWheelInst.castShadow = true;
+  bmWheelInst.frustumCulled = false;
+  bmWheelInst.count = 0;
+  beastRoot.add(bmWheelInst);
 }
 /* the light cycle: 16 s — NS green, all red, EW green, all red */
 function bmSignal() {
@@ -9988,6 +10045,7 @@ function bmStepTraffic(dt) {
       car.v = blockedAhead ? Math.max(0, car.v - CAR_BRK * dt)
                            : Math.min(A.stall > 6 ? 5 : CAR_TURN_V, car.v + CAR_ACC * dt);
       A.a += car.v * dt / A.r;
+      car.spin = (car.spin || 0) + car.v * dt / 1.9;
       if (A.a >= Math.PI / 2) {              // out of the turn, snapped onto the new lane
         car.d = A.toDir;
         const [dx, dz] = BM_DIRS[car.d];
@@ -10139,6 +10197,7 @@ function bmStepTraffic(dt) {
     else car.v = Math.max(want, car.v - CAR_BRK * dt);
     // move
     car.x += dx * car.v * dt; car.z += dz * car.v * dt;
+    car.spin = (car.spin || 0) + car.v * dt / 1.9;
     car.yaw = Math.atan2(dx, dz);
     // arrive at the arc mouth 8 studs before the centre? begin the sweep
     const s2 = (ix - car.x) * dx + (iz - car.z) * dz;
@@ -10162,7 +10221,8 @@ function bmStepTraffic(dt) {
   // draw: traffic + every parked car + the one being driven, body and glass
   const counts = new Map();
   for (const t of bmVehInst.keys()) counts.set(t, 0);
-  const put = (t, x, z, y, yaw) => {
+  let wn = 0;
+  const put = (t, x, z, y, yaw, spin) => {
     const inst = bmVehInst.get(t);
     if (!inst) return;
     const k = counts.get(t);
@@ -10174,14 +10234,29 @@ function bmStepTraffic(dt) {
     inst.body.setMatrixAt(k, _bmO.matrix);
     if (inst.glass) inst.glass.setMatrixAt(k, _bmO.matrix);
     counts.set(t, k + 1);
+    const offs = BM_WHEELS[t];
+    if (offs && bmWheelInst) {
+      const c = Math.cos(yaw), s = Math.sin(yaw);
+      for (const [wx, wy, wz] of offs) {
+        if (wn >= BM_WHEEL_MAX) break;
+        _bmO.position.set((x + wx * c + wz * s) * P, (y + wy) * PH, (z - wx * s + wz * c) * P);
+        _bmE.set(spin || 0, yaw, 0);
+        _bmO.quaternion.setFromEuler(_bmE);
+        _bmO.updateMatrix();
+        bmWheelInst.setMatrixAt(wn++, _bmO.matrix);
+      }
+    }
   };
   // the player's own car draws FIRST — when a pool ever fills, the car you are
   // sitting in must never be the one that vanishes (that bug shipped once)
-  if (bmDrive) put(bmDrive.t, bmDrive.x, bmDrive.z, play.y / PH, bmDrive.yaw);
-  for (const car of bmCars) put(car.t, car.x, car.z, BM_ROAD_TOP, car.yaw);
+  if (bmDrive) {
+    bmDrive.spin = (bmDrive.spin || 0) + (bmDrive.v || 0) * dt / 1.9;
+    put(bmDrive.t, bmDrive.x, bmDrive.z, play.y / PH, bmDrive.yaw, bmDrive.spin);
+  }
+  for (const car of bmCars) put(car.t, car.x, car.z, BM_ROAD_TOP, car.yaw, car.spin);
   for (const c of bmChunks.values())
-    if (c.parked) for (const p of c.parked) put(p.t, p.x, p.z, p.y, p.yaw);
-  for (const p of bmCustomParked) put(p.t, p.x, p.z, p.y, p.yaw);
+    if (c.parked) for (const p of c.parked) put(p.t, p.x, p.z, p.y, p.yaw, 0);
+  for (const p of bmCustomParked) put(p.t, p.x, p.z, p.y, p.yaw, 0);
   for (const [t, inst] of bmVehInst) {
     inst.body.count = counts.get(t);
     inst.body.instanceMatrix.needsUpdate = true;
@@ -10189,6 +10264,10 @@ function bmStepTraffic(dt) {
       inst.glass.count = counts.get(t);
       inst.glass.instanceMatrix.needsUpdate = true;
     }
+  }
+  if (bmWheelInst) {
+    bmWheelInst.count = wn;
+    bmWheelInst.instanceMatrix.needsUpdate = true;
   }
   // night dressing: headlight pools on the tarmac, and the police strobe
   let hn = 0, fr = 0, fb = 0;
@@ -11498,9 +11577,47 @@ function bmSplashSound(big) {
     s2.start(t0);
   } catch (e) {}
 }
+let bmFootAt = 0, bmFootLast = null;
+function bmFootstep(hard) {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    const len = bmAC.sampleRate * 0.05;
+    const buf = bmAC.createBuffer(1, len, bmAC.sampleRate);
+    const dd = buf.getChannelData(0);
+    for (let k = 0; k < len; k++) dd[k] = (Math.random() * 2 - 1) * (1 - k / len);
+    const s2 = bmAC.createBufferSource();
+    s2.buffer = buf;
+    const f = bmAC.createBiquadFilter();
+    // pavement clicks, grass thuds
+    if (hard) { f.type = 'highpass'; f.frequency.value = 1500; }
+    else { f.type = 'lowpass'; f.frequency.value = 480; }
+    const g2 = bmAC.createGain();
+    g2.gain.setValueAtTime(hard ? 0.05 : 0.035, t0);
+    g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
+    s2.connect(f).connect(g2).connect(bmAC._master);
+    s2.start(t0);
+  } catch (e) {}
+}
 function bmStepAudio(dt) {
   if (!bmACReady) return;
   try {
+    // footsteps, rate-locked to the stride so sprinting patters
+    if (bmFootLast) {
+      const sp = Math.hypot(play.x - bmFootLast.x, play.z - bmFootLast.z) / Math.max(dt, 1e-4);
+      const walking = !bmDrive && !bmRideTrain && !play.swimming && Math.abs(play.vy || 0) < 0.02;
+      if (walking && sp > 0.008) {
+        bmFootAt -= dt;
+        if (bmFootAt <= 0) {
+          const sx2 = play.x / P, sz2 = play.z / P;
+          const offx = sx2 - Math.round(sx2 / BM.PITCH) * BM.PITCH;
+          const offz = sz2 - Math.round(sz2 / BM.PITCH) * BM.PITCH;
+          bmFootstep(Math.abs(offx) <= 24 || Math.abs(offz) <= 24);
+          bmFootAt = Math.min(0.6, Math.max(0.16, 0.032 / sp));
+        }
+      } else bmFootAt = Math.min(bmFootAt, 0.05);
+    }
+    bmFootLast = { x: play.x, z: play.z };
     if (bmRideTrain && bmTrainV > 4) {
       bmClackAt -= dt;
       if (bmClackAt <= 0) { bmRailClack(); bmClackAt = 4 / bmTrainV; }
