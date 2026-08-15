@@ -9903,10 +9903,15 @@ function bmMustangGeo() {          // '65 fastback, sky blue, twin white stripes
     gbox(g, 0.9, 0.3, 4.2, sx, 15.05, -2.6, LC.white);
   }
   gbox(g, 5.6, 1.6, 3.4, 0, 9.3, -6.2, body);                    // short rear deck
-  gbox(g, 5.2, 1.2, 5.6, 0, 13.4, -4.3, body, 0, -0.42);         // fastback slope
-  gbox(g, 4.6, 1, 4.4, 0, 14.6, -2.5, body);                     // cabin roof
-  gbox(gl, 4.6, 5.4, 0.5, 0, 12.2, 1.2, BM_GLASS_C, 0, 0.3);     // raked windscreen
-  for (const sx of [-2.4, 2.4]) gbox(gl, 0.4, 4, 3.6, sx, 12, -1.2, BM_GLASS_C);   // side glass
+  gbox(g, 5.2, 1.2, 5.6, 0, 14.0, -4.3, body, 0, -0.42);         // fastback slope
+  gbox(g, 4.6, 1, 4.4, 0, 15.2, -2.5, body);                     // cabin roof (driver clears)
+  gbox(gl, 4.6, 6, 0.5, 0, 12.5, 1.2, BM_GLASS_C, 0, 0.3);       // raked windscreen
+  for (const sx of [-2.4, 2.4]) gbox(gl, 0.4, 4.6, 3.6, sx, 12.4, -1.2, BM_GLASS_C);   // side glass
+  gbox(g, 3.2, 1, 3.2, 0, 4.8, -1.5, LC.dgrey);                  // seat
+  gbox(g, 3.2, 4, 0.8, 0, 7.3, -3.1, LC.dgrey);
+  gcyl(g, 1.25, 0.4, 0, 9.3, 1.7, 0x1B2A34, 10, Math.PI / 2);    // the wheel in his hands
+  for (const sz of [-4, 4]) for (const sx of [-2.55, 2.55])      // arch eyebrows
+    gbox(g, 0.9, 1.4, 5.0, sx, 9.6, sz, LC.dgrey);
   gbox(g, 5.8, 1.4, 0.6, 0, 4.4, 7.8, chrome);                   // chrome bumpers
   gbox(g, 5.8, 1.4, 0.6, 0, 4.4, -7.8, chrome);
   gbox(g, 4.6, 2, 0.4, 0, 7.5, 7.75, 0x2A2E32);                  // grille cavity
@@ -9938,16 +9943,27 @@ function bmBroncoGeo() {           // first-gen Bronco: boxy, high, spare on the
   for (const sx of [-2.1, 2.1]) gbox(g, 1.1, 1.1, 0.4, sx, 9, 7.45, LC.white);
   gbox(g, 2.6, 1.6, 0.4, 0, 8, 7.45, 0xB7BCC4);                  // FORD bar grille
   bmTyre(g, 1.7, 2.4, 0, 11, -7.6);                              // spare on the tailgate
+  gbox(g, 3.2, 1, 3.2, 0, 6, -0.5, 0x1B2A34);                    // bench seat
+  gbox(g, 3.2, 4, 0.8, 0, 8.5, -2.1, 0x1B2A34);
+  gcyl(g, 1.25, 0.4, 0, 10.4, 2.6, 0x1B2A34, 10, Math.PI / 2);
+  for (const sz of [-4.4, 4.4]) for (const sx of [-2.8, 2.8])    // squared arch eyebrows
+    gbox(g, 0.8, 1.4, 5.6, sx, 10.9, sz, 0x1B2A34);
   return { body: gmerge(g), glass: gmerge(gl) };
 }
 function bmCybertruckGeo() {       // the stainless wedge
   const g = [], gl = [];
   const steel = 0xB8BCBE, dk = 0x23272B;
   gbox(g, 5, 1.4, 21, 0, 2.6, 0, dk);                            // skateboard chassis
-  gbox(g, 6.6, 4, 21.4, 0, 5.4, 0, steel);                       // lower slab
+  gbox(g, 6.6, 1.2, 21.4, 0, 4, 0, steel);                       // floor band — the cabin is a void
+  for (const sx of [-3.05, 3.05]) gbox(g, 0.5, 4, 21.4, sx, 5.4, 0, steel);
+  gbox(g, 6.6, 4, 4.4, 0, 5.4, 8.5, steel);                      // under the bonnet
+  gbox(g, 6.6, 4, 7.4, 0, 5.4, -7, steel);                       // under the bed
   gbox(g, 6.6, 1.8, 10.6, 0, 8.2, 0.9, steel, 0, 0.115);         // rising bonnet wedge
   gbox(g, 6.6, 1.8, 11.4, 0, 12.9, -4.9, steel, 0, -0.09);       // bed cover slope
-  gbox(gl, 6.0, 1.2, 8.2, 0, 11.9, 4.6, BM_GLASS_C, 0, 0.42);    // one raked glass sheet
+  gbox(gl, 6.0, 2.4, 8.2, 0, 11.7, 4.6, BM_GLASS_C, 0, 0.42);    // the raked glass sheet
+  gbox(g, 3.4, 1, 3.4, 0, 5.2, -1.2, dk);                        // seat
+  gbox(g, 3.4, 4, 0.8, 0, 7.7, -2.8, dk);
+  gcyl(g, 1.2, 0.4, 0, 9.6, 2.2, dk, 8, Math.PI / 2);            // yoke-ish
   gbox(g, 6.6, 0.9, 6.3, 0, 14.55, 0.5, steel);                  // ridge apex
   for (const sx of [-3.35, 3.35]) {                              // angular arch flares
     for (const zc of [7, -7]) {
@@ -9972,10 +9988,15 @@ function bmModelSGeo() {           // pearl white, low and smooth
   gbox(g, 4.6, 4.6, 0.8, 0, 5.5, -7.5, body);
   gbox(g, 5.6, 1.4, 5.2, 0, 8.4, 5, body, 0, 0.06);              // low sloping bonnet
   gbox(g, 5.6, 1.4, 4.6, 0, 8.6, -5.6, body, 0, -0.05);          // rear haunch
-  gbox(gl, 5.0, 4.6, 0.5, 0, 11, 2.6, BM_GLASS_C, 0, 0.38);      // fast windscreen
-  for (const sx of [-2.45, 2.45]) gbox(gl, 0.4, 3.4, 5.4, sx, 10.8, -0.8, BM_GLASS_C);
-  gbox(gl, 4.6, 3.2, 0.5, 0, 10.8, -4.6, BM_GLASS_C, 0, -0.35);  // raked rear glass
-  gbox(g, 4.4, 0.9, 7, 0, 12.9, -1, dk);                         // panoramic roof
+  gbox(gl, 5.0, 5.6, 0.5, 0, 11.6, 2.6, BM_GLASS_C, 0, 0.38);    // fast windscreen
+  for (const sx of [-2.45, 2.45]) gbox(gl, 0.4, 4.2, 5.4, sx, 11.6, -0.8, BM_GLASS_C);
+  gbox(gl, 4.6, 4, 0.5, 0, 11.6, -4.6, BM_GLASS_C, 0, -0.35);    // raked rear glass
+  gbox(g, 4.4, 0.9, 7, 0, 14.3, -1, dk);                         // panoramic roof, head clears
+  gbox(g, 3.2, 1, 3.2, 0, 4.6, -1.2, dk);                        // seat
+  gbox(g, 3.2, 4, 0.8, 0, 7.1, -2.8, dk);
+  gcyl(g, 1.2, 0.4, 0, 9.1, 2, dk, 10, Math.PI / 2);
+  for (const sz of [-4.8, 4.8]) for (const sx of [-2.55, 2.55])  // arches
+    gbox(g, 0.7, 1.2, 4.6, sx, 9.4, sz, dk);
   gbox(g, 5.7, 1.2, 0.6, 0, 4.2, 7.85, body);                    // smooth nose, no grille
   gbox(g, 2.4, 0.5, 0.3, 0, 7.2, 7.9, dk);                       // slim intake
   gbox(g, 0.4, 0.6, 0.25, 0, 8.6, 7.95, 0xC91A09);               // the T badge
@@ -9999,6 +10020,11 @@ function bmModelYGeo() {           // midnight silver, the tall hatch
   for (const sx of [-2.45, 2.45]) gbox(gl, 0.4, 3.8, 5.6, sx, 12.2, -0.6, BM_GLASS_C);
   gbox(gl, 4.6, 3.6, 0.5, 0, 11.9, -4.6, BM_GLASS_C, 0, -0.42);  // hatch glass
   gbox(g, 4.4, 0.9, 6.4, 0, 14.7, -1, dk);                       // glass roof
+  gbox(g, 3.2, 1, 3.2, 0, 4.8, -1, dk);                          // seat
+  gbox(g, 3.2, 4, 0.8, 0, 7.3, -2.6, dk);
+  gcyl(g, 1.2, 0.4, 0, 9.3, 2.2, dk, 10, Math.PI / 2);
+  for (const sz of [-4.4, 4.4]) for (const sx of [-2.55, 2.55])  // arches
+    gbox(g, 0.7, 1.2, 4.6, sx, 9.4, sz, dk);
   gbox(g, 5.7, 1.2, 0.6, 0, 4.3, 7.35, body);
   gbox(g, 2.4, 0.5, 0.3, 0, 7.6, 7.4, dk);
   gbox(g, 0.4, 0.6, 0.25, 0, 9, 7.45, 0xC91A09);
