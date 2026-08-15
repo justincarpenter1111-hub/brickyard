@@ -1989,7 +1989,63 @@ function faceTexture(style) {
   return tex;
 }
 const faceTexCache = new Map();
+/* The GLB head is a 144-vertex faceted prism — up close it reads as a nut,
+   not a minifig. This lathe-turned head is a true cylinder with soft
+   chamfers and the top stud, sized to the original so faces and hair fit. */
+function roundHeadGeo() {
+  const R = 0.00505, H = 0.0068, c = 0.0009, sR = 0.0027, sH = 0.0017;
+  const pts = [new THREE.Vector2(0, 0), new THREE.Vector2(R - c, 0)];
+  for (let k = 1; k <= 4; k++) {                     // bottom chamfer arc
+    const a = k / 4 * Math.PI / 2;
+    pts.push(new THREE.Vector2(R - c + Math.sin(a) * c, c - Math.cos(a) * c));
+  }
+  for (let k = 0; k <= 4; k++) {                     // top chamfer arc
+    const a = k / 4 * Math.PI / 2;
+    pts.push(new THREE.Vector2(R - c + Math.cos(a) * c, H - c + Math.sin(a) * c));
+  }
+  pts.push(new THREE.Vector2(sR, H));
+  pts.push(new THREE.Vector2(sR, H + sH - 0.0004));
+  pts.push(new THREE.Vector2(sR - 0.0005, H + sH));
+  pts.push(new THREE.Vector2(0, H + sH));
+  const g = new THREE.LatheGeometry(pts, 22);
+  g.computeBoundingSphere();
+  return g;
+}
 function buildFigure(av) {
+  if (!figParts._roundHead) {
+    figParts.get('fig_head').geo = roundHeadGeo();
+    // arms: weld the duplicated vertices, then smooth — real rounded LEGO arms
+    const weldSmooth = geo => {
+      const pos = geo.attributes.position;
+      const map = new Map(), remap = new Uint32Array(pos.count);
+      const px = [], py = [], pz = [];
+      for (let i = 0; i < pos.count; i++) {
+        const k = Math.round(pos.getX(i) * 1e6) + ',' + Math.round(pos.getY(i) * 1e6) + ',' +
+                  Math.round(pos.getZ(i) * 1e6);
+        if (map.has(k)) remap[i] = map.get(k);
+        else {
+          map.set(k, px.length); remap[i] = px.length;
+          px.push(pos.getX(i)); py.push(pos.getY(i)); pz.push(pos.getZ(i));
+        }
+      }
+      const idx = [];
+      if (geo.index) for (let i = 0; i < geo.index.array.length; i++) idx.push(remap[geo.index.array[i]]);
+      else for (let i = 0; i < pos.count; i++) idx.push(remap[i]);
+      const g2 = new THREE.BufferGeometry();
+      const pa = new Float32Array(px.length * 3);
+      for (let i = 0; i < px.length; i++) { pa[i * 3] = px[i]; pa[i * 3 + 1] = py[i]; pa[i * 3 + 2] = pz[i]; }
+      g2.setAttribute('position', new THREE.BufferAttribute(pa, 3));
+      g2.setIndex(idx);
+      g2.computeVertexNormals();
+      g2.computeBoundingSphere();
+      return g2;
+    };
+    for (const part of ['arm_L', 'arm_R', 'hair_short', 'hair_long', 'hair_ponytail']) {
+      const pg = figParts.get(part);
+      if (pg && pg.geo) pg.geo = weldSmooth(pg.geo);
+    }
+    figParts._roundHead = true;
+  }
   const g = new THREE.Group();
   const mk = (name, mat) => {
     const part = figParts.get(name);
@@ -8761,7 +8817,7 @@ function bmProp(chunk, t, x, z, yaw, y) { chunk.props.push({ t, x, z, yaw: yaw |
 function bmStuds(g, xa, za, xb, zb, y, col, step) {
   for (let sx = xa + step / 2; sx < xb; sx += step)
     for (let sz = za + step / 2; sz < zb; sz += step)
-      gcyl(g, 0.3, 1.0, sx, y + 0.5, sz, col, 6);
+      gcyl(g, 0.3, 1.0, sx, y + 0.5, sz, col, 8);
 }
 
 /* ---- the elevated railway ----
