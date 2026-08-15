@@ -10871,16 +10871,16 @@ function bmSpawnPed() {
       parent.add(m);
       return m;
     };
-    if (kid && Math.random() < 0.5) {                 // a balloon, tied to the hand
+    if (kid && Math.random() < 0.5) {                 // a balloon, tied INTO the hand's grip
       const arm = fig2.userData.armR;
-      mk(0.14, 12, 0.14, 0.3, 1.6, 0.4, 0xD8D8D0, arm);
-      mk(1.7, 5, 1.7, 0.3, 10, 0.4, [0xE53935, 0xFAC80A, 0x1E5AA8, 0xE06A9F][(Math.random() * 4) | 0], arm);
+      mk(0.14, 12, 0.14, 0, 1.7, 0.26, 0xD8D8D0, arm);
+      mk(1.7, 5, 1.7, 0, 10, 0.26, [0xE53935, 0xFAC80A, 0x1E5AA8, 0xE06A9F][(Math.random() * 4) | 0], arm);
     } else if (!kid && Math.random() < 0.3) {         // a backpack
       const torso = fig2.children[1];
       mk(2.4, 4.5, 1.1, 0, 1.2, -0.85, [0x315B78, 0xB40000, 0x00852B][(Math.random() * 3) | 0], torso);
       mk(2.2, 1.2, 0.3, 0, 3.4, -1.05, 0x25465D, torso);
     } else if (!kid && Math.random() < 0.3) {         // a shopping bag
-      mk(2, 3, 0.9, 0.2, -4.3, 0.4, [0xD6B34B, 0xE06A9F, 0xF4F4F4][(Math.random() * 3) | 0], fig2.userData.armL);
+      mk(2, 3, 0.9, 0, -4.4, 0.26, [0xD6B34B, 0xE06A9F, 0xF4F4F4][(Math.random() * 3) | 0], fig2.userData.armL);
     }
     if (Math.random() < 0.35) {                       // an umbrella, up when it rains
       const arm = fig2.userData.armL;
@@ -10888,7 +10888,7 @@ function bmSpawnPed() {
       const sh = mk(0.16, 12, 0.16, 0, 0, 0, 0x55595C, umb);
       const c1 = mk(6, 1, 6, 0, 5.6, 0, [0x294F78, 0xB40000, 0xFAC80A][(Math.random() * 3) | 0], umb);
       const c2 = mk(4.2, 1, 4.2, 0, 6.6, 0, c1.material.color.getHex(), umb);
-      umb.position.set(0.3 * P, -1 * PH, 0.4 * P);
+      umb.position.set(0, -3.4 * PH, 0.26 * P);       // gripped a third of the way up
       umb.visible = false;
       arm.add(umb);
       ped.umb = umb;
@@ -11153,7 +11153,7 @@ function bmCanBoard() {
 function bmBoardTrain() {
   bmRideTrain = true;
   bmDoorBeep();
-  if (BCAMS[bmCamIdx].id === 'fpv') bmSetCam(1);
+  // FPV stays FPV — that IS the window seat (bmUpdateCamera handles it)
   toast('All aboard! Hop off at any station');
 }
 function bmLeaveTrain() {
