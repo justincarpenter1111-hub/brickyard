@@ -8664,12 +8664,32 @@ const BM_KITS = {
            [3,3,1,1.5,4,6,0xC91A09],[3,3,1,5,4,6,0x0055BF],[2.5,3,1,8.5,4,6,0x237841],
            [4,2,1,2,8,6,0xF2CD37],[4,2,1,6.5,8,6,0x81007B],[6,3,2,3,0,2.5,0x583927],
            [4,1,1,4,3,3,0xFE8A18]],
+  // Grok's call: FIXIT full of buns is worse than an empty room — every sign
+  // gets a matching room, each with its clerk baked in behind the counter
+  tools:  [[10,10,1,1,0,7,0x8C8C8C],[10,1,1,1,3,6.5,0xD67923],[10,1,1,1,7,6.5,0xD67923],
+           [2,2,1,1.5,4,6,0xC91A09],[2,2,1,4.5,4,6,0x0055BF],[2,2,1,7.5,4,6,0xF2CD37],
+           [2,2,1,2.5,8,6,0x237841],[2,2,1,6,8,6,0x05131D],
+           [8,4,2,2,0,2,0x4B555C],[8,1,2,2,4,2,0xB7BCC4],
+           [1.8,6,1.2,5,0,0.9,0xD67923],[1.2,3,1.2,5.3,6,0.9,0xF2CD37]],
+  pets:   [[10,10,1,1,0,7,0x009CBD],[4,4,1,1.5,3,6.5,0x469BC3],[4,4,1,6.5,3,6.5,0x469BC3],
+           [10,1,1,1,7.5,6.5,0xF4F4F4],[2,2,1,2,8.5,6,0xC91A09],[2,2,1,8,8.5,6,0xFE8A18],
+           [8,4,2,2,0,2,0x583927],[8,1,2,2,4,2,0xD7C599],
+           [3,1,2,8,0,3.5,0x6C2E9C],[1.5,2,1.5,8.7,1,3.8,0xF4F4F4],
+           [1.8,6,1.2,4.5,0,0.9,0x009CBD],[1.2,3,1.2,4.8,6,0.9,0xF2CD37]],
+  florist:[[10,10,1,1,0,7,0x237841],[10,1,1,1,3,6.5,0xD7C599],[10,1,1,1,6.5,6.5,0xD7C599],
+           [1.5,2,1,1.5,4,6,0xC91A09],[1.5,2,1,3.5,4,6,0xF2CD37],[1.5,2,1,5.5,4,6,0xE06A9F],
+           [1.5,2,1,7.5,4,6,0xF4F4F4],[1.5,2,1,2.5,7.5,6,0xFE8A18],[1.5,2,1,6,7.5,6,0x81007B],
+           [8,4,2,2,0,2,0x00852B],[8,1,2,2,4,2,0xD7C599],[2,3,2,9.5,0,4.5,0xA0A5A9],
+           [1.8,6,1.2,5,0,0.9,0x00852B],[1.2,3,1.2,5.3,6,0.9,0xF2CD37]],
 };
 function bmKitFor(tile) {
   if ([0, 1, 6, 7].includes(tile)) return 'bakery';    // SLICE/SCOOPS/DONUT/NOODLES
-  if (tile === 5) return 'toy';
-  if (tile === 8) return 'book';
-  return ['bakery', 'toy', 'book'][tile % 3];
+  if (tile === 5) return 'toy';                        // TOYBOX
+  if (tile === 8 || tile === 10) return 'book';        // BOOKNOOK / TUNES browse alike
+  if (tile === 3 || tile === 4 || tile === 11) return 'tools';   // ZAPPY/FIXIT/BEACON
+  if (tile === 9) return 'pets';                       // PAWS
+  if (tile === 2) return 'florist';                    // BLOOM
+  return 'bakery';
 }
 function bmShopKit(g, glassAt, inw, alongC, baseY, kind) {
   for (const b of BM_KITS[kind]) {
@@ -9352,6 +9372,8 @@ function bmGenChunk(i, j) {
         const t = bmPickVeh(BM_PARK_MIX, R());
         const half = BM_VEHICLES[t].len / 2 + 0.5;
         const cxp = bs.alongZ ? lat : along, czp = bs.alongZ ? along : lat;
+        // a bay the player drove off from stays empty across regens and reloads
+        if (bmTakenBays.has(Math.round(cxp) + ',' + Math.round(czp))) continue;
         chunk.parked.push({ t, x: cxp, z: czp, yaw: bs.yaw, y: 2 });
         solids.push(bs.alongZ ? [cxp - 3.2, cxp + 3.2, czp - half, czp + half, 17, 0]
                               : [cxp - half, cxp + half, czp - 3.2, czp + 3.2, 17, 0]);
@@ -9719,6 +9741,8 @@ const BM_WHEELS = {
   van: bmAxleSet([-5.5, 5.5], 2.1),
   bus: bmAxleSet([-10.5, 10.5], 2.6),
   truck: bmAxleSet([8, -3.5, -7.5], 2.4),
+  // small rail wheels under the tram skirt (4th element scales the instance)
+  tram: [[-2.2, 2.75, -7, 0.58], [2.2, 2.75, -7, 0.58], [-2.2, 2.75, 7, 0.58], [2.2, 2.75, 7, 0.58]],
 };
 let bmWheelInst = null;
 const BM_WHEEL_MAX = 640;
@@ -10261,11 +10285,12 @@ function bmStepTraffic(dt) {
     const offs = BM_WHEELS[t];
     if (offs && bmWheelInst) {
       const c = Math.cos(yaw), s = Math.sin(yaw);
-      for (const [wx, wy, wz] of offs) {
+      for (const [wx, wy, wz, ws] of offs) {
         if (wn >= BM_WHEEL_MAX) break;
         _bmO.position.set((x + wx * c + wz * s) * P, (y + wy) * PH, (z - wx * s + wz * c) * P);
-        _bmE.set(spin || 0, yaw, 0);
+        _bmE.set((spin || 0) / (ws || 1), yaw, 0);
         _bmO.quaternion.setFromEuler(_bmE);
+        _bmO.scale.setScalar(ws || 1);
         _bmO.updateMatrix();
         bmWheelInst.setMatrixAt(wn++, _bmO.matrix);
       }
@@ -10278,9 +10303,11 @@ function bmStepTraffic(dt) {
     put(bmDrive.t, bmDrive.x, bmDrive.z, play.y / PH, bmDrive.yaw, bmDrive.spin);
   }
   for (const car of bmCars) put(car.t, car.x, car.z, BM_ROAD_TOP, car.yaw, car.spin);
+  // parked wheels get a position-hashed spin so the hub nuts don't all clone
+  const pspin = (p) => (p.x * 7 + p.z * 13) % (Math.PI * 2);
   for (const c of bmChunks.values())
-    if (c.parked) for (const p of c.parked) put(p.t, p.x, p.z, p.y, p.yaw, 0);
-  for (const p of bmCustomParked) put(p.t, p.x, p.z, p.y, p.yaw, 0);
+    if (c.parked) for (const p of c.parked) put(p.t, p.x, p.z, p.y, p.yaw, pspin(p));
+  for (const p of bmCustomParked) put(p.t, p.x, p.z, p.y, p.yaw, pspin(p));
   for (const [t, inst] of bmVehInst) {
     inst.body.count = counts.get(t);
     inst.body.instanceMatrix.needsUpdate = true;
@@ -10336,9 +10363,10 @@ function bmStepTraffic(dt) {
 const bmLampGeoR = new THREE.BoxGeometry(1.4 * P, 1.4 * PH, 0.5 * P);
 const bmRedInst = new THREE.InstancedMesh(bmLampGeoR, new THREE.MeshBasicMaterial({ color: 0xff5040 }), 256);
 const bmGrnInst = new THREE.InstancedMesh(bmLampGeoR, new THREE.MeshBasicMaterial({ color: 0x40e070 }), 256);
-bmRedInst.frustumCulled = bmGrnInst.frustumCulled = false;
-bmRedInst.count = bmGrnInst.count = 0;
-beastRoot.add(bmRedInst, bmGrnInst);
+const bmAmbInst = new THREE.InstancedMesh(bmLampGeoR, new THREE.MeshBasicMaterial({ color: 0xFFB830 }), 256);
+bmRedInst.frustumCulled = bmGrnInst.frustumCulled = bmAmbInst.frustumCulled = false;
+bmRedInst.count = bmGrnInst.count = bmAmbInst.count = 0;
+beastRoot.add(bmRedInst, bmGrnInst, bmAmbInst);
 /* clock hands: every face in the city tells the same (fast) time */
 const bmHandGeoH = new THREE.BoxGeometry(0.9 * P, 3.4 * PH, 0.9 * P).translate(0, 1.7 * PH, 0);
 const bmHandGeoM = new THREE.BoxGeometry(0.7 * P, 5 * PH, 0.7 * P).translate(0, 2.5 * PH, 0);
@@ -10373,29 +10401,37 @@ function bmSyncClocks() {
 }
 let bmLastSig = '';
 let bmLightsDirty = true;
+/* what the lamp SHOWS: green ends a second before the logic's green so the
+   last second reads amber — which is exactly when timeToClear is deciding */
+function bmLampState(nsAxis) {
+  const c = bmClock % 16;
+  if (nsAxis) return c < 6 ? 'G' : c < 7 ? 'A' : 'R';
+  return c >= 8 && c < 14 ? 'G' : c >= 14 && c < 15 ? 'A' : 'R';
+}
 function bmSyncLights() {
-  const sig = bmSignal();
-  const sigKey = (sig.ns ? 'N' : '') + (sig.ew ? 'E' : '');
+  const kN = bmLampState(true), kE = bmLampState(false);
+  const sigKey = kN + kE;
   if (!bmLightsDirty && sigKey === bmLastSig) return;
   bmLastSig = sigKey; bmLightsDirty = false;
-  let nr = 0, ng = 0;
+  let nr = 0, ng = 0, na = 0;
   for (const c of bmChunks.values()) {
     if (!c.lights) continue;
     for (const l of c.lights) {
-      const green = l.ns ? sig.ns : sig.ew;
-      const inst = green ? bmGrnInst : bmRedInst;
-      const n = green ? ng++ : nr++;
+      const st = l.ns ? kN : kE;
+      const inst = st === 'G' ? bmGrnInst : st === 'A' ? bmAmbInst : bmRedInst;
+      const n = st === 'G' ? ng++ : st === 'A' ? na++ : nr++;
       if (n >= 256) continue;
-      _bmO.position.set(l.x * P, (green ? 31.8 : 37.2) * PH, l.z * P);
+      _bmO.position.set(l.x * P, (st === 'G' ? 31.8 : st === 'A' ? 34.5 : 37.2) * PH, l.z * P);
       _bmO.rotation.set(0, Math.atan2(l.fx, l.fz), 0);
       _bmO.scale.set(1, 1, 1);
       _bmO.updateMatrix();
       inst.setMatrixAt(n, _bmO.matrix);
     }
   }
-  bmRedInst.count = nr; bmGrnInst.count = ng;
+  bmRedInst.count = nr; bmGrnInst.count = ng; bmAmbInst.count = na;
   bmRedInst.instanceMatrix.needsUpdate = true;
   bmGrnInst.instanceMatrix.needsUpdate = true;
+  bmAmbInst.instanceMatrix.needsUpdate = true;
 }
 
 /* ---------- driving a parked car ----------
@@ -10404,10 +10440,11 @@ function bmSyncLights() {
    of sixteen facings, and hands it back to the chunk.                      */
 let bmDrive = null, bmNearCar = null, bmSpark = null;
 /* what the player has moved lives outside the chunks, and outlives the session */
-let bmCustomParked = [], bmFleetTaken = {};
+let bmCustomParked = [], bmFleetTaken = {}, bmTakenBays = new Set();
 function bmSaveState() {
   try {
-    localStorage.setItem('beastState_v1', JSON.stringify({ c: bmCustomParked, f: bmFleetTaken }));
+    localStorage.setItem('beastState_v1',
+      JSON.stringify({ c: bmCustomParked, f: bmFleetTaken, b: [...bmTakenBays] }));
   } catch (e) {}
 }
 function bmLoadState() {
@@ -10415,7 +10452,8 @@ function bmLoadState() {
     const d = JSON.parse(localStorage.getItem('beastState_v1') || '{}');
     bmCustomParked = Array.isArray(d.c) ? d.c.filter(p => BM_VEHICLES[p.t]) : [];
     bmFleetTaken = d.f && typeof d.f === 'object' ? d.f : {};
-  } catch (e) { bmCustomParked = []; bmFleetTaken = {}; }
+    bmTakenBays = new Set(Array.isArray(d.b) ? d.b : []);
+  } catch (e) { bmCustomParked = []; bmFleetTaken = {}; bmTakenBays = new Set(); }
 }
 function bmEnsureSpark() {
   if (bmSpark) return;
@@ -10453,6 +10491,7 @@ function bmEnterCar() {
     const ci = chunk.solids.findIndex(s => p.x > s[0] - 0.6 && p.x < s[1] + 0.6 &&
                                            p.z > s[2] - 0.6 && p.z < s[3] + 0.6 && s[4] === 17);
     if (ci >= 0) chunk.solids.splice(ci, 1);
+    if (!p.fleet) { bmTakenBays.add(Math.round(p.x) + ',' + Math.round(p.z)); bmSaveState(); }
   }
   if (p.fleet) { bmFleetTaken[p.fleet] = true; bmSaveState(); }
   const ride = BM_VEHICLES[p.t].ride || 'car';
@@ -11315,7 +11354,7 @@ function bmStepWalk(dt) {
       play.vy = 0; play.grounded = true;
     }
   } else bmPoolPip = false;
-  updateSplash(inPool, play.x, play.y + 4.5 * PH, play.z, speed > 0.01);
+  updateSplash(inPool, play.x, 5.05 * PH, play.z, speed > 0.01);   // ripples ON the water plane
   if (fig) {
     if (inPool) {
       const s = Math.sin(play.phase + performance.now() / 300);
