@@ -9009,10 +9009,14 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
   gbox(g, 14, 2, 18, X(GU), 26, Z(GV), roofC);      // roof
   solids.push([X(GU - 7), X(GU + 7), Z(GV - 9), Z(GV + 9), 28, 25]);
   bmStuds(g, X(GU - 6), Z(GV - 8), X(GU + 6), Z(GV + 8), 27.2, roofC, 4);
-  chunk.parked.push({ t: 'car_red', x: X(GU - 1), z: Z(GV), yaw: Math.PI / 2, y: 4 });
-  solids.push([X(GU - 8.5), X(GU + 6.5), Z(GV - 3.2), Z(GV + 3.2), 21, 4]);
-  chunk.parked.push({ t: 'skate', x: X(28), z: Z(5.5), yaw: Math.PI / 2 + 0.2, y: 4.8 });
-  chunk.parked.push({ t: 'broom', x: X(47), z: Z(19.5), yaw: 0.9, y: 5.4 });   // by the pool palms
+  if (!bmFleetTaken.car) {
+    chunk.parked.push({ t: 'car_red', x: X(GU - 1), z: Z(GV), yaw: Math.PI / 2, y: 4, fleet: 'car' });
+    solids.push([X(GU - 8.5), X(GU + 6.5), Z(GV - 3.2), Z(GV + 3.2), 21, 4]);
+  }
+  if (!bmFleetTaken.skate)
+    chunk.parked.push({ t: 'skate', x: X(28), z: Z(5.5), yaw: Math.PI / 2 + 0.2, y: 4.8, fleet: 'skate' });
+  if (!bmFleetTaken.broom)
+    chunk.parked.push({ t: 'broom', x: X(47), z: Z(19.5), yaw: 0.9, y: 5.4, fleet: 'broom' });
   // garden dressing
   for (const [tu, tv, t] of [[4, 58, 'prop_tree_oak'], [60, 58, 'prop_tree_oak'],
                              [4, 34, 'prop_tree_apple'], [56, 30, 'prop_tree_small']]) {
@@ -9494,6 +9498,15 @@ function bmBlocked(x, z, feetY, climb = CLIMB, r = FIG_R) {
       if (top > feetY + climb + 1e-5 && bot < feetY + FIG_H - 0.002) return true;
     }
   }
+  // parked-by-the-player vehicles are obstacles wherever they were left
+  if (feetY < 22 * PH) for (const c of bmCustomParked) {
+    const ddx = sx - c.x, ddz = sz - c.z;
+    if (ddx * ddx + ddz * ddz > 900) continue;
+    const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
+    const a = ddx * fx + ddz * fz, lat = ddx * fz - ddz * fx;
+    const L = BM_VEHICLES[c.t].len;
+    if (Math.abs(a) < L / 2 + 0.7 + sr && Math.abs(lat) < BM_VEHICLES[c.t].w / 2 + 0.6 + sr) return true;
+  }
   // moving traffic is solid too — you bump off a car, you don't ghost through it
   if (feetY < 22 * PH) for (const c of bmCars) {
     const ddx = sx - c.x, ddz = sz - c.z;
@@ -9807,6 +9820,12 @@ function bmAheadGap(car) {         // bumper clearance to whatever is queued ahe
   const pa = (play.x / P - car.x) * dx + (play.z / P - car.z) * dz;
   const pl = Math.abs((play.x / P - car.x) * dz - (play.z / P - car.z) * dx);
   if (pa > 0 && pl < 5.5) gap = Math.min(gap, pa - half - (bmDrive ? 8 : 0));
+  // and whatever the player abandoned in the lane
+  for (const o of bmCustomParked) {
+    const a = (o.x - car.x) * dx + (o.z - car.z) * dz;
+    const lat = Math.abs((o.x - car.x) * dz - (o.z - car.z) * dx);
+    if (a > 0 && lat < 5.5) gap = Math.min(gap, a - half - BM_VEHICLES[o.t].len / 2);
+  }
   // and so is any minifig on the road ahead
   for (const p of bmPeds) {
     const a = (p.x - car.x) * dx + (p.z - car.z) * dz;
@@ -10039,6 +10058,7 @@ function bmStepTraffic(dt) {
   for (const car of bmCars) put(car.t, car.x, car.z, BM_ROAD_TOP, car.yaw);
   for (const c of bmChunks.values())
     if (c.parked) for (const p of c.parked) put(p.t, p.x, p.z, p.y, p.yaw);
+  for (const p of bmCustomParked) put(p.t, p.x, p.z, p.y, p.yaw);
   for (const [t, inst] of bmVehInst) {
     inst.body.count = counts.get(t);
     inst.body.instanceMatrix.needsUpdate = true;
@@ -10157,6 +10177,20 @@ function bmSyncLights() {
    chunk's props and solids; leaving parks it where it stands, snapped to one
    of sixteen facings, and hands it back to the chunk.                      */
 let bmDrive = null, bmNearCar = null, bmSpark = null;
+/* what the player has moved lives outside the chunks, and outlives the session */
+let bmCustomParked = [], bmFleetTaken = {};
+function bmSaveState() {
+  try {
+    localStorage.setItem('beastState_v1', JSON.stringify({ c: bmCustomParked, f: bmFleetTaken }));
+  } catch (e) {}
+}
+function bmLoadState() {
+  try {
+    const d = JSON.parse(localStorage.getItem('beastState_v1') || '{}');
+    bmCustomParked = Array.isArray(d.c) ? d.c.filter(p => BM_VEHICLES[p.t]) : [];
+    bmFleetTaken = d.f && typeof d.f === 'object' ? d.f : {};
+  } catch (e) { bmCustomParked = []; bmFleetTaken = {}; }
+}
 function bmEnsureSpark() {
   if (bmSpark) return;
   bmSpark = new THREE.Mesh(new THREE.BoxGeometry(1.2 * P, 1.2 * PH, 1.2 * P),
@@ -10169,6 +10203,11 @@ function bmFindNearCar() {
   bmNearCar = null;
   let bd = 14;
   const px = play.x / P, pz = play.z / P;
+  for (let k = 0; k < bmCustomParked.length; k++) {
+    const p = bmCustomParked[k];
+    const d = Math.hypot(p.x - px, p.z - pz);
+    if (d < bd) { bd = d; bmNearCar = { custom: true, idx: k, p }; }
+  }
   for (const c of bmChunks.values()) {
     if (!c.parked) continue;
     if (Math.abs((c.i + 0.5) * BM.PITCH - px) > 130 || Math.abs((c.j + 0.5) * BM.PITCH - pz) > 130) continue;
@@ -10182,12 +10221,16 @@ function bmFindNearCar() {
 function bmEnterCar() {
   if (!bmNearCar || bmDrive) return;
   const { chunk, idx, p } = bmNearCar;
-  chunk.parked.splice(idx, 1);
-  const ci = chunk.solids.findIndex(s => p.x > s[0] - 0.6 && p.x < s[1] + 0.6 &&
-                                         p.z > s[2] - 0.6 && p.z < s[3] + 0.6 && s[4] === 17);
-  if (ci >= 0) chunk.solids.splice(ci, 1);
+  if (bmNearCar.custom) bmCustomParked.splice(idx, 1);
+  else {
+    chunk.parked.splice(idx, 1);
+    const ci = chunk.solids.findIndex(s => p.x > s[0] - 0.6 && p.x < s[1] + 0.6 &&
+                                           p.z > s[2] - 0.6 && p.z < s[3] + 0.6 && s[4] === 17);
+    if (ci >= 0) chunk.solids.splice(ci, 1);
+  }
+  if (p.fleet) { bmFleetTaken[p.fleet] = true; bmSaveState(); }
   const ride = BM_VEHICLES[p.t].ride || 'car';
-  bmDrive = { t: p.t, len: BM_VEHICLES[p.t].len, kind: ride,
+  bmDrive = { t: p.t, len: BM_VEHICLES[p.t].len, kind: ride, fleet: p.fleet,
               x: p.x, z: p.z, yaw: p.yaw, v: 0, prevCam: bmCamIdx };
   bmNearCar = null;
   if (BCAMS[bmCamIdx].id !== 'chase') bmSetCam(1);   // always start seeing your ride
@@ -10201,17 +10244,10 @@ function bmExitCar() {
   const d = bmDrive;
   const STEP16 = Math.PI / 8;
   const yaw = Math.round(d.yaw / STEP16) * STEP16;
-  const chunk = bmChunks.get(Math.floor(d.x / BM.PITCH) + ',' + Math.floor(d.z / BM.PITCH));
-  if (chunk) {
-    if (!chunk.parked) chunk.parked = [];
-    chunk.parked.push({ t: d.t, x: d.x, z: d.z, yaw, y: bmGroundPl(d.x, d.z) });
-    const half = d.len / 2 + 0.5;
-    const topH = (d.kind === 'car' ? 17 : 6) + bmGroundPl(d.x, d.z);
-    const ax = Math.abs(Math.sin(yaw)) < 0.4, az = Math.abs(Math.cos(yaw)) < 0.4;
-    chunk.solids.push(ax ? [d.x - 3.2, d.x + 3.2, d.z - half, d.z + half, topH, 0]
-                    : az ? [d.x - half, d.x + half, d.z - 3.2, d.z + 3.2, topH, 0]
-                         : [d.x - 6.5, d.x + 6.5, d.z - 6.5, d.z + 6.5, topH, 0]);
-  }
+  bmCustomParked.push({ t: d.t, x: d.x, z: d.z, yaw,
+                        y: bmGroundAt(d.x * P, d.z * P, play.y + 0.01, CLIMB_RIDE) / PH,
+                        fleet: d.fleet });
+  bmSaveState();
   // step out on the driver's side, a little clear of the door
   play.x = (d.x - Math.cos(yaw) * 6) * P;
   play.z = (d.z + Math.sin(yaw) * 6) * P;
@@ -11652,6 +11688,7 @@ function setBeastMode(on) {
     document.getElementById('beastCamBtn').textContent = BCAMS[0].icon;
     if (!fig) refreshFig();
     if (fig) fig.visible = false;
+    bmLoadState();
     bmInitCarMeshes();
     bmInitNightLights();
     bmInitAmbient();
