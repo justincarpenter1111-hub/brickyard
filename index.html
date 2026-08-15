@@ -9430,6 +9430,31 @@ function bmGenChunk(i, j) {
       }
     }
     gbox(g, 0.35, 0.35, 92, 0, 26, z0 + 62, 0x33373B);   // one wire over the centre line
+    // the lanes the cars gave up become a promenade: planters and parasols
+    for (const side of [-1, 1]) {
+      for (const zo of [38, 68, 78]) {   // clear of the z0+56 tram stop and its alighting path
+        const px2 = side * 7.5, pz2 = z0 + zo;
+        gbox(g, 3, 2.6, 3, px2, 3.3, pz2, 0x8A8A86);                 // stone planter
+        gbox(g, 2.4, 1.4, 2.4, px2, 5.3, pz2, 0x00852B);
+        for (let fk = 0; fk < 3; fk++)
+          gbox(g, 0.7, 1.2, 0.7, px2 - 0.7 + fk * 0.7, 6.4, pz2 + (fk - 1) * 0.6,
+               [0xE53935, 0xFAC80A, 0xE06A9F][fk]);
+        solids.push([px2 - 1.6, px2 + 1.6, pz2 - 1.6, pz2 + 1.6, 6, 0]);
+      }
+      { // a café table under a parasol, two stools
+        const cx2 = side * 8.5, cz2 = z0 + 48;
+        gcyl(g, 1.6, 0.6, cx2, 6.5, cz2, 0xF4F4F4, 10);              // table top
+        gbox(g, 0.5, 4.5, 0.5, cx2, 3.3, cz2, 0x8A8F98);
+        gbox(g, 0.3, 9, 0.3, cx2, 10, cz2, 0x8A8F98);                // parasol pole
+        gcyl(g, 3.4, 1, cx2, 14.6, cz2, side < 0 ? 0xC91A09 : 0x1E5AA8, 10);
+        gcyl(g, 2.2, 1, cx2, 15.5, cz2, 0xF4F4F4, 10);
+        for (const so of [-2.6, 2.6]) {
+          gcyl(g, 0.9, 0.5, cx2 + so, 4.2, cz2, 0xFAC80A, 8);
+          gbox(g, 0.4, 4, 0.4, cx2 + so, 2, cz2, 0x8A8F98);
+        }
+        solids.push([cx2 - 2, cx2 + 2, cz2 - 2, cz2 + 2, 7, 0]);
+      }
+    }
   }
 
   /* traffic lights at this chunk's south-west intersection: a pole on the
