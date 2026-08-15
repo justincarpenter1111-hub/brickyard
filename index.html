@@ -11178,6 +11178,38 @@ function bmCanBoard() {
   const px = play.x / P, pz = play.z / P, py = play.y / PH;
   return py > 25 && Math.abs(pz) < 13 && bmTrainV < 0.5 && Math.abs(px - bmTrainX + 34) < 42;
 }
+/* riding the tram: hop on while it's at a stop (or crawling), ride the
+   median through town, hop off wherever it halts next */
+let bmRideTram = null;
+function bmNearDwellTram() {
+  for (const c of bmCars)
+    if (c.t === 'tram' && c.v < 6 &&
+        Math.hypot(c.x - play.x / P, c.z - play.z / P) < 14) return c;
+  return null;
+}
+function bmBoardTram(c) {
+  bmRideTram = c;
+  bmDoorBeep();
+  toast('On the tram — hop off at any stop');
+}
+function bmLeaveTram() {
+  const c = bmRideTram;
+  bmRideTram = null;
+  bmDoorBeep();
+  if (c) { play.x = (c.x + 7) * P; play.z = c.z * P; }
+  play.y = bmGroundPl(play.x / P, play.z / P) * PH;
+  play.vy = 0;
+  toast('Mind the tracks!');
+}
+function bmStepTramRide() {
+  const c = bmRideTram;
+  if (!c || bmCars.indexOf(c) < 0) { bmLeaveTram(); return; }
+  play.x = c.x * P; play.z = c.z * P;
+  play.y = (BM_ROAD_TOP + 2.2) * PH;
+  play.vy = 0;
+  play.yaw = c.yaw;
+  if (fig) for (const k of ['legL', 'legR', 'armL', 'armR']) fig.userData[k].rotation.x = 0;
+}
 function bmBoardTrain() {
   bmRideTrain = true;
   bmDoorBeep();
@@ -11716,12 +11748,19 @@ function bmStepWalk(dt) {
       fig.userData.armR.rotation.x = -1.4 - s * 0.9;
       fig.userData.legL.rotation.x = s * 0.35;
       fig.userData.legR.rotation.x = -s * 0.35;
+      play.bob = 0; fig.rotation.z = 0;
     } else {
-      const s = Math.sin(play.phase) * Math.min(1, speed * 25);
-      fig.userData.legL.rotation.x = s * 0.75;
-      fig.userData.legR.rotation.x = -s * 0.75;
-      fig.userData.armL.rotation.x = -s * 0.65;
-      fig.userData.armR.rotation.x = s * 0.65;
+      // the same residual pass the classic walker got: planted feet, hip bob
+      // bottoming on each strike, a lean over the stance leg, uneven idle arms
+      const w = Math.min(1, speed * 25);
+      const s = Math.sin(play.phase) * w;
+      const e = Math.sign(s) * Math.pow(Math.abs(s), 0.8);
+      fig.userData.legL.rotation.x = e * 0.75;
+      fig.userData.legR.rotation.x = -e * 0.75;
+      fig.userData.armL.rotation.x = -s * 0.65 - 0.04;
+      fig.userData.armR.rotation.x = s * 0.65 + 0.025;
+      play.bob = play.grounded ? w * (1 + Math.cos(2 * play.phase)) * 0.000512 : 0;
+      fig.rotation.z = Math.sin(play.phase) * 0.026 * w;
     }
   }
   updateFigTransform();
@@ -12048,7 +12087,7 @@ function bmStepAudio(dt) {
     // footsteps, rate-locked to the stride so sprinting patters
     if (bmFootLast) {
       const sp = Math.hypot(play.x - bmFootLast.x, play.z - bmFootLast.z) / Math.max(dt, 1e-4);
-      const walking = !bmDrive && !bmRideTrain && !play.swimming && Math.abs(play.vy || 0) < 0.02;
+      const walking = !bmDrive && !bmRideTrain && !bmRideTram && !play.swimming && Math.abs(play.vy || 0) < 0.02;
       if (walking && sp > 0.008) {
         bmFootAt -= dt;
         if (bmFootAt <= 0) {
@@ -12512,6 +12551,7 @@ function stepBeast(dt) {
   bmStreamChunks(1);
   bmSyncProps();
   if (bmRideTrain) bmStepRide();
+  else if (bmRideTram) bmStepTramRide();
   else if (bmDrive) bmStepDrive(dt);
   else bmStepWalk(dt);
   if ((bmTick % 12) === 0) {
@@ -12520,8 +12560,14 @@ function stepBeast(dt) {
     if (bmRideTrain) {
       if (bmTrainV < 2) { btn.textContent = '🚪 Hop off'; btn.classList.remove('hidden'); }
       else btn.classList.add('hidden');
+    } else if (bmRideTram) {
+      btn.textContent = '🚪 Hop off';
+      btn.classList.remove('hidden');
     } else if (bmCanBoard()) {
       btn.textContent = '🚂 Ride the train';
+      btn.classList.remove('hidden');
+    } else if (!bmDrive && bmNearDwellTram()) {
+      btn.textContent = '🚋 Ride the tram';
       btn.classList.remove('hidden');
     } else if (bmDrive) {
       btn.textContent = bmDrive.kind === 'broom' ? '🧹 Land'
@@ -12587,7 +12633,9 @@ document.getElementById('beastSprintBtn').onclick = () => {
 };
 document.getElementById('beastDrive').onclick = () => {
   if (bmRideTrain) { if (bmTrainV < 2) bmLeaveTrain(); }
+  else if (bmRideTram) bmLeaveTram();
   else if (bmCanBoard()) bmBoardTrain();
+  else if (!bmDrive && bmNearDwellTram()) bmBoardTram(bmNearDwellTram());
   else if (bmDrive) bmExitCar();
   else bmEnterCar();
 };
