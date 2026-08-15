@@ -501,6 +501,7 @@ input[type=text] { font-size:16px; padding:11px 12px; border-radius:12px; border
 
 <div id="beastHud" class="hidden">
   <button id="beastCamBtn" title="Camera view">👁</button>
+  <button id="beastNavBtn" title="Navigate to a landmark">🎯</button>
   <button id="beastWideBtn" title="Wide angle">🔭</button>
   <button id="beastSprintBtn" title="Sprint">⚡</button>
   <button id="beastExitBtn" title="Leave the city">✕</button>
@@ -8386,7 +8387,7 @@ function bmDistrict(i, j) {
   return f > 0.68 ? 'downtown' : f < 0.34 ? 'suburb' : 'mid';
 }
 function bmChunkType(i, j) {                         // what lives on block (i,j)?
-  if (i === 0 && j === 0) return 'city';             // home block, always
+  if (i === 5 && j === -2) return 'estate';          // the family mansion block
   const r = rng(bmSeed(i * 3 + 11, j * 3 - 7))();
   const d = bmDistrict(i, j);
   if (r < (d === 'suburb' ? 0.24 : d === 'downtown' ? 0.07 : 0.15)) return 'park';
@@ -8707,6 +8708,7 @@ function bmStuds(g, xa, za, xb, zb, y, col, step) {
    clear of the lanes, trucks clear underneath). Every fourth block has a
    station; block 1 gets Grand Central.                                     */
 const BM_RAIL_Z = 0;
+const BM_POOL = { x0: 629, x1: 645, z0: -197, z1: -183 };   // the mansion pool, swimmable
 function bmRailStationX(i) { return i * BM.PITCH + 56; }
 function bmIsStation(i) { return ((i % 4) + 4) % 4 === 3; }
 function bmRail(g, glow, solids, chunk, x0, i) {
@@ -8794,55 +8796,146 @@ function bmGrandCentral(g, glow, solids, chunk, x0) {
    The parcel the player wakes up in (Codex drew the floor plan): a one-storey
    house with an open doorway, a bedroom with the bed/rug/lamp/teddy, and a
    garage holding the family car, a skateboard and grandma's old broom.      */
-function bmHome(g, glow, solids, chunk) {
-  const X = lx => 40 + lx, Z = lz => 24 + lz, Y = ly => 5 + ly;
-  const W = (sx, sy, sz, lx, ly, lz, col) => {
-    gbox(g, sx, sy, sz, X(lx), Y(ly), Z(lz), col);
-    solids.push([X(lx) - sx / 2, X(lx) + sx / 2, Z(lz) - sz / 2, Z(lz) + sz / 2,
-                 Y(ly) + sy / 2, Y(ly) - sy / 2]);
+function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
+  /* The family estate: a Queenslander mansion on stumps with a wrap-around
+     veranda, a square LEGO roundabout drive with a fountain island, palm
+     gardens, a big pool, and the garage wing. Fills its whole block on the
+     city's quiet edge. Grid: block [x0+24 .. x0+88] x [z0+24 .. z0+88].     */
+  const bx = x0 + 24, bz = z0 + 24;                 // block origin, 64 x 64
+  const X = u => bx + u, Z = v => bz + v;           // local 0..64
+  const white = 0xF4F4F4, trim = 0x469BC3, roofC = 0x91501C, deckC = 0xD7BA8C;
+  const W = (sx, sy, sz, u, y, v, col) => {
+    gbox(g, sx, sy, sz, X(u), y, Z(v), col);
+    solids.push([X(u) - sx / 2, X(u) + sx / 2, Z(v) - sz / 2, Z(v) + sz / 2, y + sy / 2, y - sy / 2]);
   };
-  const wallC = 0xD7BA8C, roofC = 0x720012;
-  gbox(g, 30, 1, 23, X(0), Y(-0.5), Z(17.5), 0xBB805A);              // timber floor
-  W(1, 21, 23, -14.5, 10.5, 17.5, wallC);                            // shell
-  W(1, 21, 23, 14.5, 10.5, 17.5, wallC);
-  W(30, 21, 1, 0, 10.5, 28.5, wallC);
-  W(12.5, 21, 1, -8.75, 10.5, 6.5, wallC);
-  W(2.5, 21, 1, 3.75, 10.5, 6.5, wallC);
-  W(5, 3, 1, 0, 19.5, 6.5, wallC);                                   // front door header (5-stud opening)
-  gbox(g, 20, 1.4, 24.5, X(-5), Y(21.7), Z(17.5), roofC);            // roofs
-  gbox(g, 10, 1.4, 24.5, X(10), Y(21.7), Z(17.5), roofC);
-  bmStuds(g, X(-15), Z(6.5), X(15), Z(28.5), Y(22.4), roofC, 4);
-  solids.push([X(-15), X(15), Z(6), Z(29), Y(22.4), Y(21)]);
-  W(1, 21, 14, 5.5, 10.5, 13, wallC);                                // garage divider
-  W(1, 21, 4, 5.5, 10.5, 27, wallC);
-  W(1, 3, 5, 5.5, 19.5, 22.5, wallC);
-  W(1, 21, 12, -3.5, 10.5, 22, wallC);                               // bedroom wall
-  W(4, 21, 1, -12, 10.5, 16.5, wallC);
-  W(2, 21, 1, -4, 10.5, 16.5, wallC);
-  W(5, 3, 1, -7.5, 19.5, 16.5, wallC);
-  // windows: one on each outer bedroom wall, warm at night
-  for (const [lx, lz, alongX] of [[-14.5, 21, false], [-8, 28.5, true]]) {
-    gbox(g, alongX ? 4 : 1.4, 10, alongX ? 1.4 : 4, X(lx), Y(12), Z(lz), 0x10161C);
-    gbox(glow, alongX ? 4.4 : 0.6, 11, alongX ? 0.6 : 4.4,
-         X(lx) + (alongX ? 0 : -0.6), Y(12), Z(lz) + (alongX ? 0.6 : 0), 0xFFDf9E);
+  // lawn over the whole block, studded like a baseplate
+  gbox(g, 64, 0.5, 64, X(32), 4.35, Z(32), 0x2f9e44);
+  bmStuds(g, X(2), Z(2), X(62), Z(62), 4.6, 0x27913C, 10);
+  // perimeter hedge with a gate gap at the south drive
+  for (const [hu, hv, sw, sd] of [[13, 1, 24, 1.6], [51, 1, 24, 1.6],
+                                  [32, 63, 62, 1.6], [1, 32, 1.6, 60], [63, 32, 1.6, 60]]) {
+    gbox(g, sw, 6, sd, X(hu), 7.5, Z(hv), 0x00852B);
+    solids.push([X(hu) - sw / 2, X(hu) + sw / 2, Z(hv) - sd / 2, Z(hv) + sd / 2, 10.5, 0]);
   }
-  gbox(g, 8, 0.5, 22, X(10), 4.35, Z(-5), 0x8A8A86);                 // the driveway
-  // furniture (real prop kits)
-  bmProp(chunk, 'prop_bed', 28.5, 46.5, Math.PI / 2, 5);
-  solids.push([26, 31, 43, 50, 13, 5]);
-  bmProp(chunk, 'prop_rug', 33, 46, 0, 5);
-  bmProp(chunk, 'prop_lamp_floor', 35, 50.5, 0, 5);
-  gbox(glow, 1.6, 2, 1.6, 35, Y(9), 50.5, 0xFFD27A);
-  bmProp(chunk, 'prop_teddy', 33.5, 47.6, -2.4, 6);   // on the rug, feet down
-  bmProp(chunk, 'prop_bookshelf', 33.8, 51.4, Math.PI, 5);
-  solids.push([32, 35.6, 50.4, 52.2, 20, 5]);
-  bmProp(chunk, 'prop_armchair', 27, 40.5, 0.8, 5);
-  // the garage fleet — parked so a minifig can squeeze past the car
-  chunk.parked.push({ t: 'car_red', x: 49.4, z: 41.5, yaw: Math.PI, y: 5 });
-  solids.push([46.6, 52.2, 34.5, 48.5, 22, 5]);
-  chunk.parked.push({ t: 'skate', x: 46.4, z: 32.5, yaw: Math.PI + 0.3, y: 5 });
-  chunk.parked.push({ t: 'broom', x: 53.1, z: 50.2, yaw: 1.2, y: 6 });
-  bmHomePos.x = 40; bmHomePos.z = 33;
+  /* the square roundabout drive (this is a brick world — the ring is plates) */
+  const RC = { u: 28, v: 14 };                       // ring centre local
+  gbox(g, 30, 0.6, 5, X(RC.u), 4.5, Z(RC.v - 11), 0x8A8A86);   // south segment
+  gbox(g, 30, 0.6, 5, X(RC.u), 4.5, Z(RC.v + 11), 0x8A8A86);   // north segment
+  gbox(g, 5, 0.6, 17, X(RC.u - 12.5), 4.5, Z(RC.v), 0x8A8A86); // west
+  gbox(g, 5, 0.6, 17, X(RC.u + 12.5), 4.5, Z(RC.v), 0x8A8A86); // east
+  gbox(g, 8, 0.6, 26, X(RC.u), 4.5, Z(-11), 0x8A8A86);         // driveway to the street
+  // fountain island
+  bmProp(chunk, 'prop_fountain', X(RC.u), Z(RC.v), 0, 5);
+  solids.push([X(RC.u) - 4, X(RC.u) + 4, Z(RC.v) - 4, Z(RC.v) + 4, 14, 0]);
+  for (let k = 0; k < 8; k++) {
+    const a = k / 8 * Math.PI * 2;
+    gbox(g, 1.2, 2.6, 1.2, X(RC.u) + Math.cos(a) * 7, 6.2, Z(RC.v) + Math.sin(a) * 7,
+         [0xB40000, 0xFAC80A, 0xE06A9F, 0xF4F4F4][k % 4]);
+  }
+  /* the mansion, up on its stumps */
+  const HU0 = 8, HU1 = 52, HV0 = 26, HV1 = 46;      // house walls, local
+  const DECK0 = HU0 - 4, DECK1 = HU1 + 4, DV0 = HV0 - 5, DV1 = HV1 + 3;
+  for (let su = HU0; su <= HU1; su += 8)             // stumps
+    for (const sv of [HV0, (HV0 + HV1) / 2, HV1])
+      W(2, 12, 2, su, 10, sv, 0x5F3109);
+  // lattice skirt between the stumps
+  gbox(g, HU1 - HU0 + 6, 5, 0.5, X((HU0 + HU1) / 2), 8.5, Z(DV0 + 0.4), 0xE8E2D4);
+  gbox(g, 44 + 8, 2, 26 + 8, X((HU0 + HU1) / 2 + 0), 16, Z((DV0 + DV1) / 2), deckC);   // veranda deck
+  solids.push([X(DECK0), X(DECK1), Z(DV0), Z(DV1), 17, 13]);
+  bmStuds(g, X(DECK0) + 1, Z(DV0) + 1, X(DECK1) - 1, Z(DV1) - 1, 17, 0xC9AC7E, 8);
+  // veranda posts and rail
+  for (let pu = DECK0 + 1; pu <= DECK1 - 1; pu += 7.2)
+    W(1, 18, 1, pu, 26, DV0 + 0.6, white);
+  gbox(g, DECK1 - DECK0, 1.4, 0.8, X((DECK0 + DECK1) / 2), 24, Z(DV0 + 0.6), trim);
+  // rails leave a gap for the grand front stairs (local 24..36)
+  for (const [ru, rw] of [[(DECK0 + 22) / 2 + 0, 22 - DECK0], [(38 + DECK1) / 2, DECK1 - 38]])
+    W(rw, 4, 0.8, ru, 19.5, DV0 + 0.6, white);
+  // grand stairs down to the drive
+  for (let s = 0; s < 6; s++)
+    W(12, 2, 1.6, 30, 15 - s * 2, DV0 - 0.8 - s * 1.6, deckC);
+  /* walls: airy Queenslander — low sills, open windows, header band */
+  const wallRun = (u0, u1, v, skipA, skipB) => {     // along x at local v
+    for (const [a, b] of [[u0, skipA], [skipB, u1]]) {
+      if (b - a < 0.5) continue;
+      W(b - a, 7, 1, (a + b) / 2, 20.5, v, white);   // sill wall
+      gbox(glow, b - a - 1, 9, 0.4, X((a + b) / 2), 28, Z(v), 0xFFDf9E);   // warm at night
+    }
+    W(u1 - u0, 4, 1, (u0 + u1) / 2, 36, v, white);   // header band
+    for (let pu = u0 + 4; pu < u1 - 1; pu += 8) W(1, 12, 1, pu, 28, v, white);
+  };
+  wallRun(HU0, HU1, HV0, 27, 33);                    // front, 6-wide French doors
+  wallRun(HU0, HU1, HV1, 29, 33);                    // back door to the pool lawn
+  const wallSide = (v0, v1, u) => {
+    W(1, 7, v1 - v0, u, 20.5, (v0 + v1) / 2, white);
+    W(1, 4, v1 - v0, u, 36, (v0 + v1) / 2, white);
+    for (let pv = v0 + 4; pv < v1 - 1; pv += 7) W(1, 12, 1, u, 28, pv, white);
+    gbox(glow, 0.4, 9, v1 - v0 - 2, X(u), 28, Z((v0 + v1) / 2), 0xFFDf9E);
+  };
+  wallSide(HV0, HV1, HU0);
+  wallSide(HV0, HV1, HU1);
+  // bedroom partition, west wing, with a 5-stud doorway
+  W(1, 21, 8, 26, 27.5, HV0 + 4, white);
+  W(1, 21, 3, 26, 27.5, HV1 - 1.5, white);
+  gbox(g, 44, 1, 20, X(30), 17.5, Z((HV0 + HV1) / 2), 0xBB805A);   // timber floor
+  /* the roof: stepped hips in terracotta with ridge caps */
+  let span = 48, dep = 24, ry = 38;
+  while (span > 10) {
+    gbox(g, span, 3, dep, X(30), ry + 1.5, Z(36), roofC);
+    span -= 7; dep -= 5; ry += 3;
+  }
+  gbox(g, 14, 2, 3, X(30), ry + 1, Z(36), 0x646464);               // ridge
+  solids.push([X(8), X(52), Z(26), Z(46), ry + 2, 37]);
+  // front gable ornament over the stairs
+  gbox(g, 8, 6, 1, X(30), 40, Z(HV0 - 0.6), trim);
+  gbox(g, 4, 3, 1, X(30), 44, Z(HV0 - 0.6), white);
+  /* bedroom furnishing (upstairs, floor top 17) */
+  bmProp(chunk, 'prop_bed', X(12), Z(37), Math.PI / 2, 17);
+  solids.push([X(9.5), X(16), Z(34), Z(40), 24, 17]);
+  bmProp(chunk, 'prop_rug', X(20), Z(36), 0, 17);
+  bmProp(chunk, 'prop_teddy', X(20.5), Z(35.5), -2.3, 18);
+  bmProp(chunk, 'prop_lamp_floor', X(10.5), Z(43.5), 0, 17);
+  gbox(glow, 1.6, 2, 1.6, X(10.5), 26, Z(43.5), 0xFFD27A);
+  bmProp(chunk, 'prop_bookshelf', X(23.5), Z(44), Math.PI, 17);
+  solids.push([X(21.5), X(25.5), Z(43), Z(45), 31, 17]);
+  bmProp(chunk, 'prop_armchair', X(36), Z(42), 2.4, 17);
+  bmProp(chunk, 'prop_potted_plant', X(48), Z(28.5), 0, 17);
+  /* the big pool, east lawn, with palms and loungers */
+  const PU0 = 44, PU1 = 62, PV0 = 2, PV1 = 18;
+  gbox(g, PU1 - PU0 + 2, 2, PV1 - PV0 + 2, X((PU0 + PU1) / 2), 5, Z((PV0 + PV1) / 2), 0xC8C8C8);   // coping
+  gbox(g, PU1 - PU0 - 2, 1.6, PV1 - PV0 - 2, X((PU0 + PU1) / 2), 4.4, Z((PV0 + PV1) / 2), 0x469BC3); // water
+  // coping is a solid rim you step up onto; the water itself is swimmable
+  for (const [su, sv, sw, sd] of [[(PU0 + PU1) / 2, PV0, PU1 - PU0 + 2, 1], [(PU0 + PU1) / 2, PV1, PU1 - PU0 + 2, 1],
+                                  [PU0, (PV0 + PV1) / 2, 1, PV1 - PV0], [PU1, (PV0 + PV1) / 2, 1, PV1 - PV0]])
+    solids.push([X(su) - sw / 2, X(su) + sw / 2, Z(sv) - sd / 2, Z(sv) + sd / 2, 6, 0]);
+  gbox(g, 1, 4, 3, X(PU0 + 1), 8, Z((PV0 + PV1) / 2), 0xC8C8C8);   // ladder
+  solids.push([X(PU0 + 1) - 0.7, X(PU0 + 1) + 0.7, Z((PV0 + PV1) / 2) - 1.5, Z((PV0 + PV1) / 2) + 1.5, 3.8, 0]);
+  for (const lv of [PV0 + 3, PV0 + 9]) {                           // loungers
+    bmProp(chunk, 'prop_bench', X(PU0 - 4), Z(lv), Math.PI / 2, 5);
+    solids.push([X(PU0 - 6), X(PU0 - 2), Z(lv - 2), Z(lv + 2), 10, 0]);
+  }
+  for (const [pu, pv] of [[PU0 + 3, PV1 + 1.5], [PU1 - 2, PV0 - 0.5], [PU0 - 2, PV0 - 0.5]]) {
+    bmProp(chunk, 'prop_tree_palm', X(pu), Z(pv), Math.random() * 6, 5);
+    solids.push([X(pu) - 1.5, X(pu) + 1.5, Z(pv) - 1.5, Z(pv) + 1.5, 30, 0]);
+  }
+  /* garage wing on the west of the ring, facing east */
+  const GU = 4, GV = 14;
+  W(1, 21, 16, GU - 6, 14.5, GV, white);            // back
+  W(12, 21, 1, GU, 14.5, GV - 8, white);            // sides
+  W(12, 21, 1, GU, 14.5, GV + 8, white);
+  gbox(g, 14, 2, 18, X(GU), 26, Z(GV), roofC);      // roof
+  solids.push([X(GU - 7), X(GU + 7), Z(GV - 9), Z(GV + 9), 28, 25]);
+  bmStuds(g, X(GU - 6), Z(GV - 8), X(GU + 6), Z(GV + 8), 27.2, roofC, 4);
+  chunk.parked.push({ t: 'car_red', x: X(GU - 1), z: Z(GV), yaw: Math.PI / 2, y: 4 });
+  solids.push([X(GU - 8.5), X(GU + 6.5), Z(GV - 3.2), Z(GV + 3.2), 21, 4]);
+  chunk.parked.push({ t: 'skate', x: X(RC.u - 9), z: Z(RC.v - 11), yaw: Math.PI / 2 + 0.2, y: 5 });
+  chunk.parked.push({ t: 'broom', x: X(44), z: Z(DV0 + 2), yaw: 0.9, y: 18 });   // on the veranda
+  // garden dressing
+  for (const [tu, tv, t] of [[4, 58, 'prop_tree_oak'], [60, 58, 'prop_tree_oak'],
+                             [4, 34, 'prop_tree_apple'], [56, 30, 'prop_tree_small']]) {
+    bmProp(chunk, t, X(tu), Z(tv), Math.random() * 6, 5);
+    solids.push([X(tu) - 2, X(tu) + 2, Z(tv) - 2, Z(tv) + 2, 30, 0]);
+  }
+  bmHomePos.x = X(RC.u); bmHomePos.z = z0 + 14;
 }
 
 /* the clock tower: a civic landmark you can steer by from three blocks out */
@@ -9033,7 +9126,9 @@ function bmGenChunk(i, j) {
 
   if (j === 0) bmRail(g, glow, solids, chunk, x0, i);
 
-  if (type === 'plaza') {
+  if (type === 'estate') {
+    bmEstate(g, glow, glass, solids, chunk, x0, z0);
+  } else if (type === 'plaza') {
     // the market square: stone paving, a fountain, two rows of stalls
     gbox(g, 64, 0.5, 64, x0 + 56, 4.4, z0 + 56, 0xC8C8C8);
     gbox(g, 20, 0.6, 20, x0 + 56, 4.5, z0 + 56, 0x8A928D);
@@ -9105,9 +9200,7 @@ function bmGenChunk(i, j) {
     const towerAt = ((bmSeed(i, j) >>> 8) % 19) === 0 ? ((bmSeed(i, j) >>> 4) & 3) : -1;
     let q = 0;
     for (const qx of [0, 1]) for (const qz of [0, 1]) {
-      if (i === 0 && j === 0 && qx === 0 && qz === 0) { q++; bmHome(g, glow, solids, chunk); }
-      else if (q++ === towerAt && !(i === 0 && j === 0))
-        bmClockTower(g, glow, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32);
+      if (q++ === towerAt) bmClockTower(g, glow, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32);
       else bmBuilding(g, glow, glass, signs, solids, R, x0 + 24 + qx * 32, z0 + 24 + qz * 32, qx, qz, district);
     }
     // street trees hug the kerb line, clear of the walking line — face-first
@@ -9162,13 +9255,15 @@ function bmDropChunk(key) {
 let bmQueue = [];
 function bmStreamChunks(budget) {
   const ci = Math.floor(play.x / P / BM.PITCH), cj = Math.floor(play.z / P / BM.PITCH);
+  // the train and the broom see further — stream a wider ring for them
+  const LR = (bmRideTrain || (bmDrive && bmDrive.kind === 'broom')) ? 3 : BM.LOAD_R;
   for (const key of [...bmChunks.keys()]) {
     const c = bmChunks.get(key);
-    if (Math.max(Math.abs(c.i - ci), Math.abs(c.j - cj)) > BM.DROP_R) bmDropChunk(key);
+    if (Math.max(Math.abs(c.i - ci), Math.abs(c.j - cj)) > LR + 1) bmDropChunk(key);
   }
   bmQueue.length = 0;
-  for (let di = -BM.LOAD_R; di <= BM.LOAD_R; di++)
-    for (let dj = -BM.LOAD_R; dj <= BM.LOAD_R; dj++) {
+  for (let di = -LR; di <= LR; di++)
+    for (let dj = -LR; dj <= LR; dj++) {
       const i = ci + di, j = cj + dj;
       if (!bmChunks.has(i + ',' + j)) bmQueue.push([Math.abs(di) + Math.abs(dj), i, j]);
     }
@@ -9216,6 +9311,7 @@ function bmSyncProps() {
 
 /* ---------- physics queries against the streamed city ---------- */
 function bmGroundPl(sx, sz) {
+  if (sx > BM_POOL.x0 && sx < BM_POOL.x1 && sz > BM_POOL.z0 && sz < BM_POOL.z1) return 1;
   const ox = Math.abs(bmOff(sx)), oz = Math.abs(bmOff(sz));
   return (ox < 14 || oz < 14) ? BM_ROAD_TOP : BM_PATH_TOP;
 }
@@ -9963,10 +10059,39 @@ function bmStepDrive(dt) {
   play.x = d.x * P; play.z = d.z * P;
   const gfloor = bmGroundPl(d.x, d.z) * PH;
   if (skate) {                                     // skateboards ollie — real air
-    play.vy -= GRAV * dt;
-    play.y += play.vy * dt;
-    if (play.y <= gfloor) { play.y = gfloor; play.vy = 0; play.grounded = true; }
-    else play.grounded = false;
+    // kerb grinds: hit the kerb line fast and shallow and the board locks on
+    if (!d.grind && play.grounded && d.v > 9) {
+      const offX = bmOff(d.x), offZ = bmOff(d.z);
+      if (Math.abs(Math.abs(offX) - 14) < 1 && Math.abs(Math.sin(d.yaw)) < 0.55 && Math.abs(offZ) > 16) {
+        const line = Math.round(d.x / BM.PITCH) * BM.PITCH;
+        d.x = line + Math.sign(offX) * 14;
+        d.yaw = Math.cos(d.yaw) > 0 ? 0 : Math.PI;
+        d.grind = { t: 0, yaw: d.yaw };
+        toast('Griiind!');
+      } else if (Math.abs(Math.abs(offZ) - 14) < 1 && Math.abs(Math.cos(d.yaw)) < 0.55 && Math.abs(offX) > 16) {
+        const line = Math.round(d.z / BM.PITCH) * BM.PITCH;
+        d.z = line + Math.sign(offZ) * 14;
+        d.yaw = Math.sin(d.yaw) > 0 ? Math.PI / 2 : -Math.PI / 2;
+        d.grind = { t: 0, yaw: d.yaw };
+        toast('Griiind!');
+      }
+    }
+    if (d.grind) {
+      d.grind.t += dt;
+      d.yaw = d.grind.yaw;                         // locked on the rail
+      play.y = 5.2 * PH;                           // riding the kerb stones
+      play.vy = 0; play.grounded = true;
+      if (mag > 0.6 && d.grind.t > 0.4 || d.v < 6 || d.grind.t > 2.5) {
+        d.grind = null;
+        play.vy = 0.11;                            // hop off with style
+        play.grounded = false;
+      }
+    } else {
+      play.vy -= GRAV * dt;
+      play.y += play.vy * dt;
+      if (play.y <= gfloor) { play.y = gfloor; play.vy = 0; play.grounded = true; }
+      else play.grounded = false;
+    }
   } else { play.y = gfloor; play.grounded = true; }
   play.yaw = d.yaw; play.phase = 0;
   if (fig) {
@@ -10239,17 +10364,23 @@ function bmStepTrain(dt) {
       const i2 = iHere + k;
       if (bmIsStation(i2) || i2 === 1) {
         const sx = bmRailStationX(i2);
-        if (sx > bmTrainX + 1) { stop = sx; break; }
+        if (sx > bmTrainX + 0.5) { stop = sx; break; }   // the arrival snap keeps served stops behind us
       }
     }
-    let want = 30;
+    let want = 30, arrived = false;
     if (stop != null) {
       const s = stop - bmTrainX;
-      if (s < 1.5) { bmTrainV = 0; bmTrainDwell = 3; }
+      if (s < 1.5) {
+        bmTrainX = stop; bmTrainV = 0; bmTrainDwell = 3.5; arrived = true;
+        if (bmRideTrain || Math.abs(stop - play.x / P) < 160) bmChimeStation(stop === 168);
+      }
       else want = Math.min(want, Math.sqrt(2 * 14 * Math.max(0.1, s - 1)));
     }
-    bmTrainV += (want - bmTrainV) * Math.min(1, dt * 1.2);
-    bmTrainX += bmTrainV * dt;
+    if (!arrived) {
+      if (want < bmTrainV) bmTrainV = Math.max(want, bmTrainV - 16 * dt);   // real brakes
+      else bmTrainV += (want - bmTrainV) * Math.min(1, dt * 1.2);
+      bmTrainX += bmTrainV * dt;
+    }
   }
   for (let k = 0; k < bmTrainCars.length; k++) {
     const m = bmTrainCars[k];
@@ -10257,6 +10388,36 @@ function bmStepTrain(dt) {
     m.position.set((bmTrainX - k * 34) * P, 26.2 * PH, 0);
     m.rotation.y = Math.PI / 2;
   }
+}
+/* riding it: stand on a platform while it dwells, hop on, see your city go by */
+let bmRideTrain = false;
+function bmCanBoard() {
+  if (bmDrive || bmRideTrain || !bmTrainCars.length) return false;
+  const px = play.x / P, pz = play.z / P, py = play.y / PH;
+  return py > 25 && Math.abs(pz) < 13 && bmTrainV < 0.5 && Math.abs(px - bmTrainX + 34) < 42;
+}
+function bmBoardTrain() {
+  bmRideTrain = true;
+  bmDoorBeep();
+  if (BCAMS[bmCamIdx].id === 'fpv') bmSetCam(1);
+  toast('All aboard! Hop off at any station');
+}
+function bmLeaveTrain() {
+  bmRideTrain = false;
+  bmDoorBeep();
+  play.x = (bmTrainX - 34) * P;
+  play.z = 7 * P;                              // onto the platform side
+  play.y = 28 * PH;
+  play.vy = 0;
+  if (fig) fig.visible = true;
+  toast('Mind the gap!');
+}
+function bmStepRide() {
+  play.x = (bmTrainX - 34) * P;                // riding the first coach
+  play.z = 0;
+  play.y = 30 * PH;
+  play.yaw = Math.PI / 2;
+  if (fig) fig.visible = false;                // tucked inside the coach
 }
 function bmInitAmbient() {
   if (bmBirdUp) return;
@@ -10554,20 +10715,55 @@ function bmStepWalk(dt) {
   else if (play.grounded && g0 >= play.y - 0.0001 && play.vy <= 0) { play.y = g0; play.vy = 0; }
   else play.grounded = false;
   if (play.y < -0.05) { play.y = BM_PATH_TOP * PH; play.vy = 0; }     // never fall out of the world
-  play.swimming = false;
+  const sxp = play.x / P, szp = play.z / P;
+  const inPool = sxp > BM_POOL.x0 && sxp < BM_POOL.x1 && szp > BM_POOL.z0 && szp < BM_POOL.z1
+              && play.y < 4.5 * PH;
+  if (inPool && !play.swimming) {                   // the cannonball moment
+    bmSplashSound(play.vy < -0.09);
+    play.vy = 0;
+  }
+  play.swimming = inPool;
+  if (inPool) {
+    if (play.vy > 0.02) play.grounded = false;      // mid-leap out of the water — let it fly
+    else {
+      play.y = 2.4 * PH + Math.sin(performance.now() / 420) * 0.0008;
+      play.vy = 0; play.grounded = true;
+    }
+  }
+  updateSplash(inPool, play.x, play.y + 4.5 * PH, play.z, speed > 0.01);
   if (fig) {
-    const s = Math.sin(play.phase) * Math.min(1, speed * 25);
-    fig.userData.legL.rotation.x = s * 0.75;
-    fig.userData.legR.rotation.x = -s * 0.75;
-    fig.userData.armL.rotation.x = -s * 0.65;
-    fig.userData.armR.rotation.x = s * 0.65;
+    if (inPool) {
+      const s = Math.sin(play.phase + performance.now() / 300);
+      fig.userData.armL.rotation.x = -1.4 + s * 0.9;
+      fig.userData.armR.rotation.x = -1.4 - s * 0.9;
+      fig.userData.legL.rotation.x = s * 0.35;
+      fig.userData.legR.rotation.x = -s * 0.35;
+    } else {
+      const s = Math.sin(play.phase) * Math.min(1, speed * 25);
+      fig.userData.legL.rotation.x = s * 0.75;
+      fig.userData.legR.rotation.x = -s * 0.75;
+      fig.userData.armL.rotation.x = -s * 0.65;
+      fig.userData.armR.rotation.x = s * 0.65;
+    }
   }
   updateFigTransform();
 }
 function bmUpdateCamera() {
   const c = BCAMS[bmCamIdx];
   const head = play.y + FIG_H * 0.86;
-  if (bmDrive && c.id !== 'fpv') {
+  if (bmRideTrain) {
+    if (c.id === 'fpv') {                          // the window seat — city crossing the frame
+      const ex = play.x, ey = play.y + 8 * PH, ez = play.z + 4.5 * P;
+      const sway = Math.sin(bmClock * 1.7) * 0.6 * PH * (bmTrainV / 30);
+      camera.position.set(ex, ey + sway, ez);
+      camera.lookAt(ex + 15 * P, ey - 3 * PH, ez + 9.5 * P);
+      if (fig) fig.visible = false;
+      return;
+    }
+    chase.theta = Math.PI * 1.5 + 0.48;            // quartering, reading the shopfronts
+    chase.phi = bmTrainV < 2 ? 1.34 : 1.42;
+    chase.dist = bmTrainV < 2 ? 0.12 : 0.16;
+  } else if (bmDrive && c.id !== 'fpv') {
     // fixed positions behind the car, heading always up the screen — a car is
     // fifteen studs long, so these sit far further back than the walking cams
     chase.theta = bmDrive.yaw + Math.PI;
@@ -10743,9 +10939,76 @@ function bmChirp(nighty) {
     }
   } catch (e) {}
 }
+let bmClackAt = 0;
+function bmRailClack() {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    const o = bmAC.createOscillator(), g2 = bmAC.createGain();
+    o.type = 'square'; o.frequency.value = 90;
+    g2.gain.setValueAtTime(0.05 + 0.06 * (bmTrainV / 30), t0);
+    g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
+    o.connect(g2).connect(bmAC._master);
+    o.start(t0); o.stop(t0 + 0.06);
+  } catch (e) {}
+}
+function bmChimeStation(grand) {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    const notes = grand ? [880, 659, 523] : [880, 659];
+    notes.forEach((f, k) => {
+      const o = bmAC.createOscillator(), g2 = bmAC.createGain();
+      o.frequency.value = f;
+      g2.gain.setValueAtTime(0, t0 + k * 0.14);
+      g2.gain.linearRampToValueAtTime(0.11, t0 + k * 0.14 + 0.02);
+      g2.gain.exponentialRampToValueAtTime(0.001, t0 + k * 0.14 + 0.3);
+      o.connect(g2).connect(bmAC._master);
+      o.start(t0 + k * 0.14); o.stop(t0 + k * 0.14 + 0.32);
+    });
+  } catch (e) {}
+}
+function bmDoorBeep() {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    for (let k = 0; k < 2; k++) {
+      const o = bmAC.createOscillator(), g2 = bmAC.createGain();
+      o.type = 'square'; o.frequency.value = 2100;
+      g2.gain.setValueAtTime(0.07, t0 + k * 0.13);
+      g2.gain.setValueAtTime(0, t0 + k * 0.13 + 0.07);
+      o.connect(g2).connect(bmAC._master);
+      o.start(t0 + k * 0.13); o.stop(t0 + k * 0.13 + 0.08);
+    }
+  } catch (e) {}
+}
+function bmSplashSound(big) {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    const len = bmAC.sampleRate * 0.12;
+    const buf = bmAC.createBuffer(1, len, bmAC.sampleRate);
+    const dd = buf.getChannelData(0);
+    let last = 0;
+    for (let k = 0; k < len; k++) { last = (last + (Math.random() * 2 - 1) * 0.05) * 0.99; dd[k] = last * 6; }
+    const s2 = bmAC.createBufferSource();
+    s2.buffer = buf;
+    const lp = bmAC.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 900;
+    const g2 = bmAC.createGain();
+    g2.gain.setValueAtTime(big ? 0.2 : 0.1, t0);
+    g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.35);
+    s2.connect(lp).connect(g2).connect(bmAC._master);
+    s2.start(t0);
+  } catch (e) {}
+}
 function bmStepAudio(dt) {
   if (!bmACReady) return;
   try {
+    if (bmRideTrain && bmTrainV > 4) {
+      bmClackAt -= dt;
+      if (bmClackAt <= 0) { bmRailClack(); bmClackAt = 4 / bmTrainV; }
+    }
     // the hum leans on how much traffic is near
     let near = 0;
     for (const c of bmCars) {
@@ -10772,6 +11035,7 @@ const bmHomePos = { x: 40, z: 46 };          // set for real when the home parce
 function bmChunkColor(i, j) {
   const t = bmChunkType(i, j);
   if (t === 'park') return '#7CB342';
+  if (t === 'estate') return '#F5D76E';
   if (t === 'plaza') return '#D9DEE3';
   const d = bmDistrict(i, j);
   return d === 'downtown' ? '#D8CBB2' : d === 'suburb' ? '#EAE4D2' : '#E2DAC6';
@@ -10807,6 +11071,12 @@ function bmDrawMap(ctx, size, range, headingUp) {
   ctx.lineTo(range * 1.5, -pz);
   ctx.stroke();
   ctx.setLineDash([]);
+  if (bmNavIdx && bmNavTarget) {                     // the active destination pings
+    ctx.fillStyle = 'rgba(255,138,0,' + (0.55 + 0.4 * Math.sin(bmClock * 5)).toFixed(2) + ')';
+    ctx.beginPath();
+    ctx.arc(bmNavTarget.x - px, bmNavTarget.z - pz, 9, 0, 7);
+    ctx.fill();
+  }
   // home, always
   ctx.fillStyle = '#E53935';
   ctx.beginPath();
@@ -10844,6 +11114,111 @@ function bmInitBigMap() {
   });
 }
 
+/* ---------- navigation to landmarks ----------
+   Cycle destinations with 🎯: a compass chip points the way with a live
+   distance, an orange beacon pillar marks the spot, and the minimap pings. */
+const BM_NAV = ['Off', 'Home', 'Grand Central', 'Station', 'Park', 'Plaza', 'Tower'];
+let bmNavIdx = 0, bmNavTarget = null, bmNavChip = null, bmNavArrow = null, bmNavBeacon = null;
+function bmInitNav() {
+  if (bmNavChip) return;
+  bmNavChip = document.createElement('div');
+  bmNavChip.style.cssText = 'position:fixed;top:calc(env(safe-area-inset-top,0px) + 64px);' +
+    'left:50%;transform:translateX(-50%);z-index:30;display:none;align-items:center;gap:9px;' +
+    'background:rgba(16,14,12,.75);color:#f6f0e6;padding:8px 15px;border-radius:20px;' +
+    'font-family:inherit;font-size:14px;font-weight:620;pointer-events:none';
+  bmNavArrow = document.createElement('span');
+  bmNavArrow.textContent = '➤';
+  bmNavArrow.style.cssText = 'display:inline-block;font-size:16px;color:#FFD54F;transition:transform .12s';
+  const lbl = document.createElement('span');
+  bmNavChip.appendChild(bmNavArrow);
+  bmNavChip.appendChild(lbl);
+  bmNavChip._lbl = lbl;
+  document.body.appendChild(bmNavChip);
+  bmNavBeacon = new THREE.Mesh(new THREE.BoxGeometry(3 * P, 320 * PH, 3 * P),
+    new THREE.MeshBasicMaterial({ color: 0xFF8A00, transparent: true, opacity: 0.4,
+                                  blending: THREE.AdditiveBlending, depthWrite: false }));
+  bmNavBeacon.visible = false;
+  beastRoot.add(bmNavBeacon);
+}
+function bmNearestChunkOf(type) {
+  const ci = Math.floor(play.x / P / BM.PITCH), cj = Math.floor(play.z / P / BM.PITCH);
+  let best = null, bd = 1e9;
+  for (let di = -9; di <= 9; di++) for (let dj = -9; dj <= 9; dj++) {
+    if (bmChunkType(ci + di, cj + dj) !== type) continue;
+    const cx = (ci + di) * BM.PITCH + 56, cz = (cj + dj) * BM.PITCH + 56;
+    const d = Math.hypot(cx - play.x / P, cz - play.z / P);
+    if (d < bd) { bd = d; best = { x: cx, z: cz }; }
+  }
+  return best;
+}
+function bmNavCompute() {
+  const px = play.x / P;
+  switch (BM_NAV[bmNavIdx]) {
+    case 'Home': return { x: bmHomePos.x, z: bmHomePos.z };
+    case 'Grand Central': return { x: 168, z: 0 };
+    case 'Station': {
+      let best = null, bd = 1e9;
+      const i0 = Math.round(px / BM.PITCH);
+      for (let k = -9; k <= 9; k++) {
+        const i2 = i0 + k;
+        if (!bmIsStation(i2)) continue;
+        const sx = bmRailStationX(i2);
+        const d = Math.abs(sx - px) + Math.abs(play.z / P);
+        if (d < bd) { bd = d; best = { x: sx, z: 8 }; }
+      }
+      return best;
+    }
+    case 'Park': return bmNearestChunkOf('park');
+    case 'Plaza': return bmNearestChunkOf('plaza');
+    case 'Tower': {
+      const ci = Math.floor(px / BM.PITCH), cj = Math.floor(play.z / P / BM.PITCH);
+      let best = null, bd = 1e9;
+      for (let di = -9; di <= 9; di++) for (let dj = -9; dj <= 9; dj++) {
+        const i2 = ci + di, j2 = cj + dj;
+        if (bmChunkType(i2, j2) !== 'city' || ((bmSeed(i2, j2) >>> 8) % 19) !== 0) continue;
+        const q = (bmSeed(i2, j2) >>> 4) & 3;
+        const tx = i2 * BM.PITCH + 24 + (q >> 1) * 32 + 16, tz = j2 * BM.PITCH + 24 + (q & 1) * 32 + 16;
+        const d = Math.hypot(tx - px, tz - play.z / P);
+        if (d < bd) { bd = d; best = { x: tx, z: tz }; }
+      }
+      return best;
+    }
+  }
+  return null;
+}
+function bmNavStep() {
+  if (!bmNavIdx || !bmNavChip) { if (bmNavChip) bmNavChip.style.display = 'none'; if (bmNavBeacon) bmNavBeacon.visible = false; return; }
+  bmNavTarget = bmNavCompute();
+  if (!bmNavTarget) { bmNavChip.style.display = 'none'; bmNavBeacon.visible = false; return; }
+  const dx = bmNavTarget.x - play.x / P, dz = bmNavTarget.z - play.z / P;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 26) {
+    toast('You have arrived — ' + BM_NAV[bmNavIdx] + '!');
+    bmNavIdx = 0;
+    bmNavChip.style.display = 'none';
+    bmNavBeacon.visible = false;
+    document.getElementById('beastNavBtn').classList.remove('on');
+    return;
+  }
+  const camYaw = chase.theta + Math.PI;               // where the camera is looking
+  const rel = Math.atan2(dx, dz) - camYaw;
+  bmNavArrow.style.transform = 'rotate(' + ((-rel * 180 / Math.PI) - 90).toFixed(0) + 'deg)';
+  bmNavChip._lbl.textContent = dist < 40 ? BM_NAV[bmNavIdx]
+                                         : BM_NAV[bmNavIdx] + ' · ' + Math.round(dist);
+  bmNavChip.style.display = 'flex';
+  if (dist < 40) {                                    // close: the pillar lands as a ground ring
+    bmNavBeacon.visible = true;
+    bmNavBeacon.scale.set(5.5, 0.02, 5.5);
+    bmNavBeacon.position.set(bmNavTarget.x * P, 5 * PH, bmNavTarget.z * P);
+    bmNavBeacon.material.opacity = 0.35 + 0.3 * Math.sin(bmClock * 5);
+  } else {
+    bmNavBeacon.visible = true;
+    bmNavBeacon.scale.set(1, 1, 1);
+    bmNavBeacon.position.set(bmNavTarget.x * P, 160 * PH, bmNavTarget.z * P);
+    bmNavBeacon.material.opacity = 0.3 + 0.18 * Math.sin(bmClock * 4);
+  }
+}
+
 /* ---------- performance probe (for the work loop's test step) ---------- */
 const bmFrameMs = [];
 function bmStats(dt) {
@@ -10879,7 +11254,7 @@ function setBeastMode(on) {
       vis: new Map(),
     };
     for (const ch of scene.children) {
-      if (ch === beastRoot || ch === hemi || ch === sun || ch === fig || lampPool.includes(ch)) continue;
+      if (ch === beastRoot || ch === hemi || ch === sun || ch === fig || ch === splash || lampPool.includes(ch)) continue;
       bmSaved.vis.set(ch, ch.visible);
       ch.visible = false;
     }
@@ -10893,9 +11268,9 @@ function setBeastMode(on) {
     sun.shadow.mapSize.set(2048, 2048);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
     for (const l of lampPool) { l.visible = false; l.distance = 0.22; }
-    Object.assign(play, { x: 32 * P, z: 47 * P, y: 6 * PH, vy: 0, yaw: Math.PI,
+    Object.assign(play, { x: 601 * P, z: -164 * P, y: 18 * PH, vy: 0, yaw: Math.PI / 2,
                           phase: 0, grounded: true, swimming: false });
-    Object.assign(chase, { theta: 0, phi: Math.PI / 2, dist: 0 });
+    Object.assign(chase, { theta: -Math.PI / 2, phi: Math.PI / 2, dist: 0 });
     bmIntro = 5.2; bmIntroChirp = 0;
     bmClock = BM.DAY_LEN * 0.40;                 // late morning light
     bmLastSky = -1;
@@ -10918,10 +11293,12 @@ function setBeastMode(on) {
     for (const id of ['stick', 'stickZone', 'jumpBtn', 'beastHud', 'minimap'])
       document.getElementById(id).classList.remove('hidden');
     bmInitBigMap();
+    bmInitNav();
     document.getElementById('bBeast').classList.add('on');
     select(null); hideGhost();
     toast('Beast Mode — the city never ends');
   } else {
+    if (bmRideTrain) bmLeaveTrain();
     if (bmDrive) bmExitCar();
     beastOn = false;
     for (const [ch, v] of bmSaved.vis) ch.visible = v;
@@ -10961,6 +11338,8 @@ function setBeastMode(on) {
     for (const id of ['stick', 'stickZone', 'jumpBtn', 'beastHud', 'beastDrive', 'minimap'])
       document.getElementById(id).classList.add('hidden');
     if (bmBigWrap) bmBigWrap.style.display = 'none';
+    if (bmNavChip) bmNavChip.style.display = 'none';
+    if (bmNavBeacon) bmNavBeacon.visible = false;
     document.getElementById('bBeast').classList.remove('on');
     updateHUD();
   }
@@ -10975,20 +11354,20 @@ function bmIntroCam(dt) {
   if ((t > 1.2 && bmIntroChirp === 0) || (t > 3.9 && bmIntroChirp === 1)) {
     bmChirp(false); bmIntroChirp++;
   }
-  const ex = 34.2 * P, ey = 11 * PH, ez = 43.8 * P;
+  const ex = 607 * P, ey = 26 * PH, ez = -167.5 * P;
   const head = play.y + FIG_H * 0.86;
   let lx, ly, lz, px, py, pz;
   if (t < 2) {                                     // the teddy on the pillow
     px = ex; py = ey; pz = ez;
-    lx = 33.5 * P; ly = 9 * PH; lz = 47.6 * P;
+    lx = 604.5 * P; ly = 19 * PH; lz = -164.5 * P;
   } else if (t < 3.6) {                            // pan to the open door
     const f = (t - 2) / 1.6;
     px = ex; py = ey; pz = ez;
-    lx = (28.5 + f * 4) * P; ly = (9 + f * 4) * PH; lz = (45.5 - f * 5.3) * P;
+    lx = (604.5 + f * 6) * P; ly = (19 + f * 3) * PH; lz = (-164.5 + f * 2) * P;
   } else {                                         // settle into the player's eyes
     const f = Math.min(1, (t - 3.6) / 1.5);
     px = ex + (play.x - ex) * f; py = ey + (head - ey) * f; pz = ez + (play.z - ez) * f;
-    lx = 32.5 * P; ly = (13 - f * 2) * PH; lz = 38 * P;
+    lx = 612 * P; ly = (24 - f * 3) * PH; lz = -164 * P;
   }
   camera.position.set(px, py, pz);
   camera.lookAt(lx, ly, lz);
@@ -10998,11 +11377,19 @@ function stepBeast(dt) {
   bmTick++;
   bmStreamChunks(1);
   bmSyncProps();
-  if (bmDrive) bmStepDrive(dt); else bmStepWalk(dt);
+  if (bmRideTrain) bmStepRide();
+  else if (bmDrive) bmStepDrive(dt);
+  else bmStepWalk(dt);
   if ((bmTick % 12) === 0) {
     if (!bmDrive) bmFindNearCar();
     const btn = document.getElementById('beastDrive');
-    if (bmDrive) {
+    if (bmRideTrain) {
+      if (bmTrainV < 2) { btn.textContent = '🚪 Hop off'; btn.classList.remove('hidden'); }
+      else btn.classList.add('hidden');
+    } else if (bmCanBoard()) {
+      btn.textContent = '🚂 Ride the train';
+      btn.classList.remove('hidden');
+    } else if (bmDrive) {
       btn.textContent = bmDrive.kind === 'broom' ? '🧹 Land'
                       : bmDrive.kind === 'skate' ? '🛹 Hop off' : '⏏ Get out';
       btn.classList.remove('hidden');
@@ -11022,6 +11409,7 @@ function stepBeast(dt) {
   bmUpdateLamps();
   bmUpdateCamera();
   if (bmIntro > 0) bmIntroCam(dt);
+  if ((bmTick % 6) === 0) bmNavStep();
   if (bmMapCtx && (bmTick % 6) === 0) {
     bmDrawMap(bmMapCtx, 160, 220, true);
     if (bmBigWrap && bmBigWrap.style.display === 'flex')
@@ -11032,6 +11420,12 @@ function stepBeast(dt) {
 document.getElementById('bBeast').onclick = () => setBeastMode(!beastOn);
 document.getElementById('beastExitBtn').onclick = () => setBeastMode(false);
 document.getElementById('beastCamBtn').onclick = () => bmSetCam(bmCamIdx + 1);
+document.getElementById('beastNavBtn').onclick = () => {
+  bmNavIdx = (bmNavIdx + 1) % BM_NAV.length;
+  document.getElementById('beastNavBtn').classList.toggle('on', bmNavIdx > 0);
+  toast(bmNavIdx ? 'Navigate: ' + BM_NAV[bmNavIdx] : 'Navigation off');
+  bmNavStep();
+};
 document.getElementById('beastWideBtn').onclick = () => {
   bmWide = !bmWide;
   bmApplyFov();
@@ -11043,7 +11437,10 @@ document.getElementById('beastSprintBtn').onclick = () => {
   document.getElementById('beastSprintBtn').classList.toggle('on', sprintOn);
 };
 document.getElementById('beastDrive').onclick = () => {
-  if (bmDrive) bmExitCar(); else bmEnterCar();
+  if (bmRideTrain) { if (bmTrainV < 2) bmLeaveTrain(); }
+  else if (bmCanBoard()) bmBoardTrain();
+  else if (bmDrive) bmExitCar();
+  else bmEnterCar();
 };
 {
   const jb = document.getElementById('jumpBtn');
@@ -11143,6 +11540,7 @@ window.app = {
     cars: bmCars, signal: bmSignal, peds: bmPeds,
     tick: dt => stepBeast(dt),                 // deterministic sim step for tests
     get audioState() { return bmAC ? bmAC.state : 'none'; },
+    get train() { return { x: bmTrainX, v: bmTrainV, dwell: bmTrainDwell, cars: bmTrainCars.length, riding: bmRideTrain, canBoard: bmCanBoard() }; },
     get rainF() { return bmRainF; }, set rain(v) { bmRainTarget = v; bmWeatherAt = 999; },
     get renderInfo() { return renderer.info.render; },
   },
