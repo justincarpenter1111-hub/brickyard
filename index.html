@@ -11473,6 +11473,67 @@ function bmNavStep() {
   }
 }
 
+/* ---------- photo mode ----------
+   Long-press the camera button: shutter flash, click, and a Polaroid drops
+   into the corner. Tap the Polaroid to see it big; tap again to dismiss.   */
+let bmPolaroid = null, bmPhotoBig = null, bmFlashEl = null;
+function bmShutterClick() {
+  if (!bmACReady) return;
+  try {
+    const t0 = bmAC.currentTime;
+    const o = bmAC.createOscillator(), g2 = bmAC.createGain();
+    o.type = 'square'; o.frequency.value = 1400;
+    g2.gain.setValueAtTime(0.1, t0);
+    g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.06);
+    o.connect(g2).connect(bmAC._master);
+    o.start(t0); o.stop(t0 + 0.07);
+  } catch (e) {}
+}
+function bmTakePhoto() {
+  const beaconWas = bmNavBeacon && bmNavBeacon.visible;
+  if (bmNavBeacon) bmNavBeacon.visible = false;
+  renderer.render(scene, camera);                    // fresh frame, same task = safe capture
+  const url = renderer.domElement.toDataURL('image/jpeg', 0.85);
+  if (bmNavBeacon) bmNavBeacon.visible = beaconWas;
+  bmShutterClick();
+  if (!bmFlashEl) {
+    bmFlashEl = document.createElement('div');
+    bmFlashEl.style.cssText = 'position:fixed;inset:0;background:#fff;pointer-events:none;' +
+      'opacity:0;transition:opacity .25s;z-index:70';
+    document.body.appendChild(bmFlashEl);
+  }
+  bmFlashEl.style.transition = 'none'; bmFlashEl.style.opacity = '0.9';
+  requestAnimationFrame(() => { bmFlashEl.style.transition = 'opacity .3s'; bmFlashEl.style.opacity = '0'; });
+  if (!bmPolaroid) {
+    bmPolaroid = document.createElement('img');
+    bmPolaroid.style.cssText = 'position:fixed;right:calc(env(safe-area-inset-right,0px) + 14px);' +
+      'top:calc(env(safe-area-inset-top,0px) + 210px);width:92px;border:6px solid #fff;' +
+      'border-bottom-width:20px;border-radius:3px;box-shadow:0 6px 18px rgba(0,0,0,.45);' +
+      'transform:rotate(-6deg);z-index:40;cursor:pointer';
+    document.body.appendChild(bmPolaroid);
+    bmPolaroid.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      if (!bmPhotoBig) {
+        bmPhotoBig = document.createElement('div');
+        bmPhotoBig.style.cssText = 'position:fixed;inset:0;z-index:80;display:none;align-items:center;' +
+          'justify-content:center;background:rgba(8,10,14,.7)';
+        const big = document.createElement('img');
+        big.style.cssText = 'max-width:86vw;max-height:80vh;border:12px solid #fff;' +
+          'border-bottom-width:44px;border-radius:4px;box-shadow:0 18px 60px rgba(0,0,0,.6)';
+        bmPhotoBig.appendChild(big);
+        bmPhotoBig._img = big;
+        bmPhotoBig.addEventListener('pointerdown', () => { bmPhotoBig.style.display = 'none'; });
+        document.body.appendChild(bmPhotoBig);
+      }
+      bmPhotoBig._img.src = bmPolaroid.src;
+      bmPhotoBig.style.display = 'flex';
+    });
+  }
+  bmPolaroid.src = url;
+  bmPolaroid.style.display = 'block';
+  toast('📸 Snapped!');
+}
+
 /* ---------- performance probe (for the work loop's test step) ---------- */
 const bmFrameMs = [];
 function bmStats(dt) {
@@ -11595,6 +11656,8 @@ function setBeastMode(on) {
       document.getElementById(id).classList.add('hidden');
     if (bmBigWrap) bmBigWrap.style.display = 'none';
     if (bmNavChip) bmNavChip.style.display = 'none';
+    if (bmPolaroid) bmPolaroid.style.display = 'none';
+    if (bmPhotoBig) bmPhotoBig.style.display = 'none';
     if (bmNavBeacon) bmNavBeacon.visible = false;
     document.getElementById('bBeast').classList.remove('on');
     updateHUD();
@@ -11679,7 +11742,21 @@ function stepBeast(dt) {
 }
 document.getElementById('bBeast').onclick = () => setBeastMode(!beastOn);
 document.getElementById('beastExitBtn').onclick = () => setBeastMode(false);
-document.getElementById('beastCamBtn').onclick = () => bmSetCam(bmCamIdx + 1);
+{
+  const cb = document.getElementById('beastCamBtn');
+  let downAt = 0, photoTimer = null, took = false;
+  cb.addEventListener('pointerdown', () => {
+    downAt = performance.now(); took = false;
+    photoTimer = setTimeout(() => { took = true; bmTakePhoto(); }, 480);
+  });
+  const up = () => {
+    clearTimeout(photoTimer);
+    if (!took && downAt && performance.now() - downAt < 480) bmSetCam(bmCamIdx + 1);
+    downAt = 0;
+  };
+  cb.addEventListener('pointerup', up);
+  cb.addEventListener('pointercancel', () => { clearTimeout(photoTimer); downAt = 0; });
+}
 document.getElementById('beastNavBtn').onclick = () => {
   bmNavIdx = (bmNavIdx + 1) % BM_NAV.length;
   document.getElementById('beastNavBtn').classList.toggle('on', bmNavIdx > 0);
