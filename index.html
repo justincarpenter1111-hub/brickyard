@@ -9172,8 +9172,8 @@ function bmEstate(g, glow, glass, solids, chunk, x0, z0) {
   gbox(g, 14, 2, 18, X(GU), 26, Z(GV), roofC);      // roof
   solids.push([X(GU - 7), X(GU + 7), Z(GV - 9), Z(GV + 9), 28, 25]);
   bmStuds(g, X(GU - 6), Z(GV - 8), X(GU + 6), Z(GV + 8), 27.2, roofC, 4);
-  if (!bmFleetTaken.car) {
-    chunk.parked.push({ t: 'car_red', x: X(GU - 1), z: Z(GV), yaw: Math.PI / 2, y: 4, fleet: 'car' });
+  if (!bmFleetTaken.car) {   // the pride of the garage: the sky-blue Mustang
+    chunk.parked.push({ t: 'mustang', x: X(GU - 1), z: Z(GV), yaw: Math.PI / 2, y: 4, fleet: 'car' });
     solids.push([X(GU - 8.5), X(GU + 6.5), Z(GV - 3.2), Z(GV + 3.2), 21, 4]);
   }
   if (!bmFleetTaken.skate)
@@ -9740,6 +9740,11 @@ const BM_SEDAN_W = bmAxleSet([-4, 4], 2.1);
 const BM_WHEELS = {
   car_red: BM_SEDAN_W, car_blue: BM_SEDAN_W, car_yellow: BM_SEDAN_W,
   car_black: BM_SEDAN_W, taxi: BM_SEDAN_W, police: BM_SEDAN_W,
+  mustang: bmAxleSet([-4.6, 4.6], 2.1),
+  bronco: bmAxleSet([-4.4, 4.4], 2.3).map(w => [w[0], 5.2, w[2], 1.12]),   // jacked up
+  cybertruck: bmAxleSet([-6.8, 6.8], 2.7).map(w => [w[0], 5.2, w[2], 1.12]),
+  model_s: bmAxleSet([-4.8, 4.8], 2.15),
+  model_y: bmAxleSet([-4.4, 4.4], 2.15),
   van: bmAxleSet([-5.5, 5.5], 2.1),
   bus: bmAxleSet([-10.5, 10.5], 2.6),
   truck: bmAxleSet([8, -3.5, -7.5], 2.4),
@@ -9849,6 +9854,127 @@ function bmTruckGeo() {
   gbox(g, 7.15, 0.8, 14.4, 0, 8.3, -4.2, 0xD67923);
   return { body: gmerge(g), glass: gmerge(gl) };
 }
+/* ---- the showroom five (owner's request) ---- */
+function bmMustangGeo() {          // '65 fastback, sky blue, twin white stripes
+  const g = [], gl = [];
+  const body = 0x7DB9E8, dark = LC.dgrey, chrome = 0xDCDCDC;
+  gbox(g, 4.4, 1, 15.6, 0, 1.5, 0, dark);                        // chassis
+  gbox(g, 5.4, 1, 15.6, 0, 2.5, 0, body);                        // floor pan
+  for (const sx of [-2.35, 2.35]) gbox(g, 0.9, 5, 15.6, sx, 6, 0, body);   // flanks
+  gbox(g, 4.4, 5, 0.8, 0, 6, 7.4, body);                         // nose bulkhead
+  gbox(g, 4.4, 5, 0.8, 0, 6, -7.4, body);                        // tail bulkhead
+  gbox(g, 5.6, 1.6, 6.8, 0, 9.3, 4.2, body);                     // the long bonnet
+  for (const sx of [-1.1, 1.1]) {
+    gbox(g, 0.9, 0.3, 6.8, sx, 10.25, 4.2, LC.white);            // racing stripes
+    gbox(g, 0.9, 0.3, 4.2, sx, 15.05, -2.6, LC.white);
+  }
+  gbox(g, 5.6, 1.6, 3.4, 0, 9.3, -6.2, body);                    // short rear deck
+  gbox(g, 5.2, 1.2, 5.6, 0, 13.4, -4.3, body, 0, -0.42);         // fastback slope
+  gbox(g, 4.6, 1, 4.4, 0, 14.6, -2.5, body);                     // cabin roof
+  gbox(gl, 4.6, 5.4, 0.5, 0, 12.2, 1.2, BM_GLASS_C, 0, 0.3);     // raked windscreen
+  for (const sx of [-2.4, 2.4]) gbox(gl, 0.4, 4, 3.6, sx, 12, -1.2, BM_GLASS_C);   // side glass
+  gbox(g, 5.8, 1.4, 0.6, 0, 4.4, 7.8, chrome);                   // chrome bumpers
+  gbox(g, 5.8, 1.4, 0.6, 0, 4.4, -7.8, chrome);
+  gbox(g, 4.6, 2, 0.4, 0, 7.5, 7.75, 0x2A2E32);                  // grille cavity
+  gbox(g, 0.7, 0.7, 0.3, 0, 7.5, 7.95, chrome);                  // the galloping pony
+  for (const sx of [-2.05, 2.05]) {
+    gbox(g, 1.0, 1.0, 0.4, sx, 8.4, 7.85, LC.white);             // headlamps
+    gbox(g, 0.9, 1.6, 0.3, sx, 8.2, -7.8, LC.dred);              // triple-bar tails
+  }
+  gbox(g, 3, 1, 0.25, 0, 3.2, -8.15, 0xECECE4);                  // plate
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
+function bmBroncoGeo() {           // first-gen Bronco: boxy, high, spare on the tail
+  const g = [], gl = [];
+  const body = 0xD67923, dark = LC.dgrey;
+  gbox(g, 4.4, 1.4, 14.6, 0, 2.6, 0, dark);                      // high frame
+  gbox(g, 5.6, 1, 14.6, 0, 3.8, 0, body);                        // floor
+  for (const sx of [-2.5, 2.5]) gbox(g, 0.8, 6, 14.6, sx, 7.2, 0, body);   // slab sides
+  gbox(g, 5.6, 6, 0.8, 0, 7.2, 7.0, body);                       // flat nose
+  gbox(g, 5.6, 6, 0.8, 0, 7.2, -7.0, body);                      // tailgate
+  gbox(g, 5.8, 1.6, 5.4, 0, 11, 4.2, body);                      // flat bonnet
+  gbox(g, 6, 0.8, 14.8, 0, 10.4, 0, LC.white);                   // beltline trim
+  gbox(gl, 5.2, 5.4, 0.5, 0, 14.2, 1.6, BM_GLASS_C, 0, 0.1);     // upright screen
+  for (const sx of [-2.55, 2.55]) gbox(gl, 0.4, 4.6, 6.6, sx, 14, -2, BM_GLASS_C);
+  gbox(gl, 4.8, 4.6, 0.4, 0, 14, -5.4, BM_GLASS_C);              // rear glass
+  gbox(g, 6.2, 1.4, 8.8, 0, 17, -1.8, LC.white);                 // white roof cap
+  for (const zc of [1.6, -5.4]) gbox(g, 6.1, 5.6, 0.7, 0, 13.9, zc, body); // pillars
+  gbox(g, 6.2, 1.4, 0.8, 0, 4.6, 7.4, 0xB7BCC4);                 // bumpers
+  gbox(g, 6.2, 1.4, 0.8, 0, 4.6, -7.4, 0xB7BCC4);
+  for (const sx of [-2.1, 2.1]) gbox(g, 1.1, 1.1, 0.4, sx, 9, 7.45, LC.white);
+  gbox(g, 2.6, 1.6, 0.4, 0, 8, 7.45, 0xB7BCC4);                  // FORD bar grille
+  bmTyre(g, 1.7, 2.4, 0, 11, -7.6);                              // spare on the tailgate
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
+function bmCybertruckGeo() {       // the stainless wedge
+  const g = [], gl = [];
+  const steel = 0xB8BCBE, dk = 0x23272B;
+  gbox(g, 5, 1.4, 21, 0, 2.6, 0, dk);                            // skateboard chassis
+  gbox(g, 6.6, 4, 21.4, 0, 5.4, 0, steel);                       // lower slab
+  gbox(g, 6.6, 1.8, 10.6, 0, 8.2, 0.9, steel, 0, 0.115);         // rising bonnet wedge
+  gbox(g, 6.6, 1.8, 11.4, 0, 12.9, -4.9, steel, 0, -0.09);       // bed cover slope
+  gbox(gl, 6.0, 1.2, 8.2, 0, 11.9, 4.6, BM_GLASS_C, 0, 0.42);    // one raked glass sheet
+  gbox(g, 6.6, 0.9, 6.3, 0, 14.55, 0.5, steel);                  // ridge apex
+  for (const sx of [-3.35, 3.35]) {                              // angular arch flares
+    for (const zc of [7, -7]) {
+      gbox(g, 0.5, 1.2, 6.4, sx, 9.1, zc, dk, 0, 0);
+      gbox(g, 0.5, 3, 4.6, sx, 7.4, zc, dk);
+    }
+    gbox(g, 0.4, 4.5, 21.2, sx, 5.6, 0, dk);                     // rocker line
+  }
+  gbox(g, 6.5, 0.6, 0.5, 0, 9.3, 11.35, LC.white);               // the light bar
+  gbox(g, 6.5, 0.6, 0.5, 0, 10.9, -10.9, 0xD22C2C);              // tail light bar
+  gbox(g, 6.6, 5, 0.7, 0, 6.5, -10.85, steel);                   // tailgate
+  gbox(g, 4, 1, 0.25, 0, 3.6, -11.15, 0xECECE4);
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
+function bmModelSGeo() {           // pearl white, low and smooth
+  const g = [], gl = [];
+  const body = 0xF0F0EC, dk = 0x1B2A34;
+  gbox(g, 4.4, 1, 15.8, 0, 1.5, 0, dk);
+  gbox(g, 5.4, 1.2, 15.8, 0, 2.6, 0, body);
+  for (const sx of [-2.4, 2.4]) gbox(g, 0.8, 4.6, 15.8, sx, 5.5, 0, body);
+  gbox(g, 4.6, 4.6, 0.8, 0, 5.5, 7.5, body);
+  gbox(g, 4.6, 4.6, 0.8, 0, 5.5, -7.5, body);
+  gbox(g, 5.6, 1.4, 5.2, 0, 8.4, 5, body, 0, 0.06);              // low sloping bonnet
+  gbox(g, 5.6, 1.4, 4.6, 0, 8.6, -5.6, body, 0, -0.05);          // rear haunch
+  gbox(gl, 5.0, 4.6, 0.5, 0, 11, 2.6, BM_GLASS_C, 0, 0.38);      // fast windscreen
+  for (const sx of [-2.45, 2.45]) gbox(gl, 0.4, 3.4, 5.4, sx, 10.8, -0.8, BM_GLASS_C);
+  gbox(gl, 4.6, 3.2, 0.5, 0, 10.8, -4.6, BM_GLASS_C, 0, -0.35);  // raked rear glass
+  gbox(g, 4.4, 0.9, 7, 0, 12.9, -1, dk);                         // panoramic roof
+  gbox(g, 5.7, 1.2, 0.6, 0, 4.2, 7.85, body);                    // smooth nose, no grille
+  gbox(g, 2.4, 0.5, 0.3, 0, 7.2, 7.9, dk);                       // slim intake
+  gbox(g, 0.4, 0.6, 0.25, 0, 8.6, 7.95, 0xC91A09);               // the T badge
+  for (const sx of [-1.9, 1.9]) {
+    gbox(g, 1.2, 0.5, 0.4, sx, 8.3, 7.85, LC.white);             // slit headlamps
+    gbox(g, 1.6, 0.5, 0.3, sx, 8.6, -7.85, LC.dred);
+  }
+  gbox(g, 3, 1, 0.25, 0, 3.2, -8.2, 0xECECE4);
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
+function bmModelYGeo() {           // midnight silver, the tall hatch
+  const g = [], gl = [];
+  const body = 0x5A5E63, dk = 0x16191C;
+  gbox(g, 4.4, 1, 14.8, 0, 1.5, 0, dk);
+  gbox(g, 5.4, 1.4, 14.8, 0, 2.7, 0, body);
+  for (const sx of [-2.4, 2.4]) gbox(g, 0.8, 5.6, 14.8, sx, 6.2, 0, body);
+  gbox(g, 4.6, 5.6, 0.8, 0, 6.2, 7.0, body);
+  gbox(g, 4.6, 5.6, 0.8, 0, 6.2, -7.0, body);
+  gbox(g, 5.6, 1.4, 4.6, 0, 9.6, 4.6, body, 0, 0.09);
+  gbox(gl, 5.0, 5, 0.5, 0, 12.4, 2.6, BM_GLASS_C, 0, 0.34);
+  for (const sx of [-2.45, 2.45]) gbox(gl, 0.4, 3.8, 5.6, sx, 12.2, -0.6, BM_GLASS_C);
+  gbox(gl, 4.6, 3.6, 0.5, 0, 11.9, -4.6, BM_GLASS_C, 0, -0.42);  // hatch glass
+  gbox(g, 4.4, 0.9, 6.4, 0, 14.7, -1, dk);                       // glass roof
+  gbox(g, 5.7, 1.2, 0.6, 0, 4.3, 7.35, body);
+  gbox(g, 2.4, 0.5, 0.3, 0, 7.6, 7.4, dk);
+  gbox(g, 0.4, 0.6, 0.25, 0, 9, 7.45, 0xC91A09);
+  for (const sx of [-1.9, 1.9]) {
+    gbox(g, 1.2, 0.5, 0.4, sx, 8.8, 7.4, LC.white);
+    gbox(g, 1.6, 0.5, 0.3, sx, 9, -7.35, LC.dred);
+  }
+  gbox(g, 3, 1, 0.25, 0, 3.4, -7.6, 0xECECE4);
+  return { body: gmerge(g), glass: gmerge(gl) };
+}
 function bmSkateGeo() {
   const g = [];
   gbox(g, 1.9, 0.8, 5.2, 0, 2.2, -0.2, 0xFAC80A);            // deck
@@ -9890,11 +10016,18 @@ const BM_VEHICLES = {
   van:        { len: 18, make: bmVanGeo, w: 6 },
   truck:      { len: 24, make: bmTruckGeo, w: 7 },
   bus:        { len: 32, make: bmBusGeo, w: 7 },
+  mustang:    { len: 16, make: bmMustangGeo, w: 6 },
+  bronco:     { len: 15, make: bmBroncoGeo, w: 6 },
+  cybertruck: { len: 22, make: bmCybertruckGeo, w: 7 },
+  model_s:    { len: 16, make: bmModelSGeo, w: 6 },
+  model_y:    { len: 15, make: bmModelYGeo, w: 6 },
 };
-const BM_TRAFFIC_MIX = [['car_red', 10], ['car_blue', 10], ['car_yellow', 8], ['car_black', 8],
-                        ['taxi', 16], ['police', 7], ['van', 8], ['truck', 12], ['bus', 10]];
-const BM_PARK_MIX = [['car_red', 20], ['car_blue', 20], ['car_yellow', 15], ['car_black', 15],
-                     ['taxi', 15], ['van', 15]];
+const BM_TRAFFIC_MIX = [['car_red', 8], ['car_blue', 8], ['car_yellow', 7], ['car_black', 7],
+                        ['taxi', 14], ['police', 6], ['van', 7], ['truck', 10], ['bus', 9],
+                        ['mustang', 4], ['bronco', 5], ['cybertruck', 5], ['model_s', 5], ['model_y', 5]];
+const BM_PARK_MIX = [['car_red', 14], ['car_blue', 14], ['car_yellow', 11], ['car_black', 11],
+                     ['taxi', 10], ['van', 10], ['mustang', 6], ['bronco', 6],
+                     ['cybertruck', 6], ['model_s', 6], ['model_y', 6]];
 function bmPickVeh(mix, r) {
   let total = 0;
   for (const [, w] of mix) total += w;
