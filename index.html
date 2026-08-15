@@ -2054,7 +2054,10 @@ function buildFigure(av) {
     return m;
   };
   const legsMat = matFor(av.legs), torsoMat = matFor(av.torso), armsMat = matFor(av.arms);
-  const headMat = matFor(0xF2CD37);
+  if (!buildFigure._headMat)
+    buildFigure._headMat = new THREE.MeshPhongMaterial({ color: 0xF2CD37, shininess: 55,
+                                                        specular: 0x555544 });
+  const headMat = buildFigure._headMat;
   const legsRoot = new THREE.Group();
   legsRoot.position.y = 0.0115;
   legsRoot.add(mk('fig_legs', legsMat));
