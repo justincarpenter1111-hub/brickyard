@@ -10973,12 +10973,27 @@ function bmStepPeds(dt) {
     let lat = alongZ ? p.x - line : p.z - line;
     const along = alongZ ? p.z : p.x;
     let moving = false;
+    if (p.state === 'treat') {
+      // at the ice-cream hatch: stand, get the scoop, wander off happy
+      p.t -= dt;
+      if (p.t <= 0 || !p.bus || p.bus.dwell <= 0) { p.state = 'walk'; p.bus = null; }
+      else {
+        p.yaw = Math.atan2(p.bus.x - p.x, p.bus.z - p.z);
+        p.fig.rotation.y = p.yaw;
+        p.fig.userData.armR.rotation.x = -1.15;    // cone held up
+        p.fig.userData.legL.rotation.x = p.fig.userData.legR.rotation.x = 0;
+        continue;
+      }
+    }
     if (p.state === 'board') {
       // hustle to the open door and hop on
       const ddx = p.target.x - p.x, ddz = p.target.z - p.z;
       const dd = Math.hypot(ddx, ddz);
       if (dd < 1.6 || !p.bus || p.bus.dwell <= 0) {
-        if (dd < 1.6 && p.bus && p.bus.dwell > 0) { bmDropPed(bmPeds.indexOf(p)); continue; }
+        if (dd < 1.6 && p.bus && p.bus.dwell > 0) {
+          if (p.bus.t === 'van') { p.state = 'treat'; p.t = 3 + Math.random() * 4; continue; }
+          bmDropPed(bmPeds.indexOf(p)); continue;
+        }
         p.state = 'walk'; p.bus = null;            // missed it — back to strolling
       } else {
         p.x += ddx / dd * p.v * 1.4 * dt;
@@ -10997,7 +11012,8 @@ function bmStepPeds(dt) {
     if (p.state === 'walk' && !p.bus) {
       // a bus or tram at the stop? run for it (sometimes)
       for (const c2 of bmCars) {
-        if ((c2.t !== 'bus' && c2.t !== 'tram') || !(c2.dwell > 0.8)) continue;
+        if ((c2.t !== 'bus' && c2.t !== 'tram' && c2.t !== 'van') || !(c2.dwell > 0.8)) continue;
+        if (c2.t === 'van' && c2.dwell < 5) continue;   // no point running for a closing hatch
         const dd = Math.hypot(c2.x - p.x, c2.z - p.z);
         if (dd < 34 && Math.random() < 0.65) {
           const fx2 = Math.sin(c2.yaw), fz2 = Math.cos(c2.yaw);
