@@ -10228,10 +10228,13 @@ function bmAheadGap(car) {         // bumper clearance to whatever is queued ahe
     const lat = Math.abs((o.x - car.x) * dz - (o.z - car.z) * dx);     // and on our lane?
     if (a > 0 && lat < 5.5) gap = Math.min(gap, a - half - o.len / 2);
   }
-  // the player on foot (or their car) is an obstacle too
-  const pa = (play.x / P - car.x) * dx + (play.z / P - car.z) * dz;
-  const pl = Math.abs((play.x / P - car.x) * dz - (play.z / P - car.z) * dx);
-  if (pa > 0 && pl < 5.5) gap = Math.min(gap, pa - half - (bmDrive ? 8 : 0));
+  // the player on foot (or their car) is an obstacle too — but NOT while
+  // riding transit: a tram once braked forever for its own passenger
+  if (!bmRideTram && !bmRideTrain && play.y / PH < 15) {
+    const pa = (play.x / P - car.x) * dx + (play.z / P - car.z) * dz;
+    const pl = Math.abs((play.x / P - car.x) * dz - (play.z / P - car.z) * dx);
+    if (pa > 0 && pl < 5.5) gap = Math.min(gap, pa - half - (bmDrive ? 8 : 0));
+  }
   // and whatever the player abandoned in the lane
   for (const o of bmCustomParked) {
     const a = (o.x - car.x) * dx + (o.z - car.z) * dz;
