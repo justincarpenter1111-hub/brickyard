@@ -8925,7 +8925,7 @@ function bmStuds(g, xa, za, xb, zb, y, col, step) {
    station; block 1 gets Grand Central.                                     */
 const BM_RAIL_Z = 0;
 const BM_POOL = { x0: 629, x1: 645, z0: -197, z1: -183 };   // the mansion pool, swimmable
-function bmRailStationX(i) { return i * BM.PITCH + 56; }
+function bmRailStationX(i) { return i === 0 ? 26 : i * BM.PITCH + 56; }   // Union Stop sits by the mall
 function bmIsStation(i) { return ((i % 4) + 4) % 4 === 3; }
 function bmRail(g, glow, solids, chunk, x0, i) {
   gbox(g, 112, 3, 10, x0 + 56, 24.5, 0, 0x8A8F93);                   // deck
@@ -8944,6 +8944,7 @@ function bmRail(g, glow, solids, chunk, x0, i) {
     gbox(g, 4, 2, 26, x0 + px, 22, 0, 0x7E8386);                     // crosshead
   }
   if (i === 1) { bmGrandCentral(g, glow, solids, chunk, x0); return; }
+  if (i === 0) { bmUnionStop(g, glow, solids, chunk, x0); return; }
   if (!bmIsStation(i)) return;
   const cx = x0 + 56;                                                // a neighbourhood station
   gbox(g, 32, 2, 7, cx, 27, 7, 0xB9B5A9);                            // platform, rail-top height
@@ -9049,6 +9050,77 @@ function bmGrandCentral(g, glow, solids, chunk, x0) {
     new THREE.MeshBasicMaterial({ map: tex }));
   quad.rotation.y = -Math.PI / 2;
   quad.position.set((cx - 16.6) * P, 51.5 * PH, 0);
+  beastRoot.add(quad);
+  chunk.gcSign = quad;
+}
+/* Union Stop: where the tram mall dives under the viaduct. A platform just
+   east of the crossing, Codex's red-masonry landmark canopy, a two-faced
+   street clock, a map board — the shortest tram-to-train transfer in town. */
+function bmUnionStop(g, glow, solids, chunk, x0) {
+  const cx = x0 + 26;                                  // platform spans x 10..42
+  const red = 0x8B1E1E, tan = 0xD6B58C, grn = 0x23483A;
+  gbox(g, 32, 2, 7, cx, 27, 7, 0xB9B5A9);              // platform
+  solids.push([cx - 16, cx + 16, 3.5, 10.5, 28, 0]);
+  for (let k = 0; k < 14; k++) {                       // stairs at the WEST end → mall footpath
+    const sz = 23.5 - k, h = 2 * (k + 1);
+    gbox(g, 4, h, 1, x0 + 13, h / 2, sz, 0xB9B5A9);
+    solids.push([x0 + 11, x0 + 15, sz - 0.5, sz + 0.5, h, 0]);
+  }
+  gbox(g, 24, 1, 8, cx, 46.5, 7, red);                 // landmark canopy
+  gbox(g, 25, 0.8, 9, cx, 47.3, 7, tan);               // stepped cornice
+  for (const [sx2, sz2] of [[-10, 4.5], [-10, 9.5], [10, 4.5], [10, 9.5]])
+    gbox(g, 2, 18, 2, cx + sx2, 37, sz2, red);         // masonry piers
+  // parapet with the lift gap
+  gbox(g, 21.5, 4, 0.5, cx - 5.25, 30, 10.25, tan);
+  gbox(g, 5.5, 4, 0.5, cx + 13.25, 30, 10.25, tan);
+  solids.push([cx - 16, cx + 5.5, 10, 10.5, 34, 26]);
+  solids.push([cx + 10.5, cx + 16, 10, 10.5, 34, 26]);
+  { // the lift, in station form but landmark colours
+    const lx = cx + 8, lz = 12.4;
+    for (const [ox, oz] of [[-2, -1.7], [2, -1.7], [-2, 1.7], [2, 1.7]]) {
+      gbox(g, 0.7, 44, 0.7, lx + ox, 22, lz + oz, red);
+      solids.push([lx + ox - 0.4, lx + ox + 0.4, lz + oz - 0.4, lz + oz + 0.4, 44, 0]);
+    }
+    gbox(g, 4.7, 1.5, 4.1, lx, 44.5, lz, tan);
+    for (const sxp of [-2, 2]) gbox(g, 0.35, 40, 3, lx + sxp, 22, lz, 0xD9F3FF);
+    gbox(g, 4, 1, 3, lx, 27.5, 10.6, 0xB9B5A9);
+    solids.push([lx - 2, lx + 2, 9.2, 12.1, 28, 0]);
+    if (!chunk.lifts) chunk.lifts = [];
+    chunk.lifts.push({ x: lx, z: lz });
+  }
+  gbox(glow, 20, 1.2, 6, cx, 45.6, 7, 0xFFD27A);
+  { // two-faced street clock by the stairs — the hands are live
+    gbox(g, 0.9, 22, 0.9, x0 + 18, 11, 16, grn);
+    gbox(g, 5, 5, 1.2, x0 + 18, 24.5, 16, red);
+    gbox(g, 4, 4, 0.4, x0 + 18, 24.5, 16.75, 0xE4D8B4);
+    gbox(g, 4, 4, 0.4, x0 + 18, 24.5, 15.25, 0xE4D8B4);
+    if (!chunk.clocks) chunk.clocks = [];
+    chunk.clocks.push({ x: x0 + 18, y: 24.5, z: 16.9, nx: 0, nz: 1 });
+    chunk.clocks.push({ x: x0 + 18, y: 24.5, z: 15.1, nx: 0, nz: -1 });
+    solids.push([x0 + 17.4, x0 + 18.6, 15.4, 16.6, 26, 0]);
+  }
+  { // the network map board at the stair foot
+    gbox(g, 6, 8, 0.8, x0 + 23, 12, 20, tan);
+    gbox(g, 5, 6.6, 0.4, x0 + 23, 12, 20.5, 0xD9F3FF);
+    gbox(g, 4.4, 0.6, 0.2, x0 + 23, 12, 20.75, 0x494D50);    // the rail line, east-west
+    gbox(g, 0.6, 5.6, 0.2, x0 + 23, 12, 20.75, 0x565B60);    // the tram line, north-south
+    gbox(g, 0.9, 1.1, 0.25, x0 + 23, 12, 20.8, 0xB08A3C);    // you are here: the gold dot
+    solids.push([x0 + 20, x0 + 26, 19.5, 20.6, 14, 0]);
+  }
+  // UNION STOP nameplate on the canopy, facing the promenade
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 64;
+  const c2 = cv.getContext('2d');
+  c2.fillStyle = '#23483A'; c2.fillRect(0, 0, 512, 64);
+  c2.fillStyle = '#B08A3C';
+  c2.font = '700 44px Outfit, sans-serif';
+  c2.textAlign = 'center'; c2.textBaseline = 'middle';
+  c2.fillText('UNION STOP', 256, 34);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(20 * P, 2.5 * PH),
+    new THREE.MeshBasicMaterial({ map: tex }));
+  quad.position.set(cx * P, 45.2 * PH, 11.6 * P);
   beastRoot.add(quad);
   chunk.gcSign = quad;
 }
@@ -11192,7 +11264,7 @@ function bmStepTrain(dt) {
     let stop = null;
     for (let k = 0; k < 6; k++) {
       const i2 = iHere + k;
-      if (bmIsStation(i2) || i2 === 1) {
+      if (bmIsStation(i2) || i2 === 1 || i2 === 0) {
         const sx = bmRailStationX(i2);
         if (sx > bmTrainX + 0.5) { stop = sx; break; }   // the arrival snap keeps served stops behind us
       }
