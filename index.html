@@ -11090,15 +11090,19 @@ function bmStepPeds(dt) {
     }
     if (!moving) p.phase *= Math.max(0, 1 - dt * 8);
     const gy = bmGroundPl(p.x, p.z) * PH;
-    p.fig.position.set(p.x * P, gy, p.z * P);
+    // the same residuals the player got: bob on the strike, lean on the stance
+    const mw = moving ? 1 : 0;
+    p.fig.position.set(p.x * P, gy + mw * (1 + Math.cos(2 * p.phase)) * 0.0004, p.z * P);
     p.fig.rotation.y = p.yaw;
-    const sswing = Math.sin(p.phase) * (moving ? 0.7 : 0);
+    p.fig.rotation.z = Math.sin(p.phase) * 0.024 * mw;
+    const raw = Math.sin(p.phase) * (moving ? 0.7 : 0);
+    const sswing = Math.sign(raw) * Math.pow(Math.abs(raw), 0.8);
     p.fig.userData.legL.rotation.x = sswing;
     p.fig.userData.legR.rotation.x = -sswing;
     const brolly = p.umb && bmRainF > 0.35;
     if (p.umb) p.umb.visible = brolly;
-    p.fig.userData.armL.rotation.x = brolly ? -2.9 : -sswing * 0.8;   // umbrella held high
-    p.fig.userData.armR.rotation.x = sswing * 0.8;
+    p.fig.userData.armL.rotation.x = brolly ? -2.9 : -raw * 0.8 - 0.04;   // umbrella held high
+    p.fig.userData.armR.rotation.x = raw * 0.8 + 0.025;
   }
 }
 
