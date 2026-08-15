@@ -2073,6 +2073,22 @@ function buildFigure(av) {
   armL.position.fromArray(figParts.get('arm_L').t);
   armR.position.fromArray(figParts.get('arm_R').t);
   armL.add(mk('arm_L', armsMat)); armR.add(mk('arm_R', armsMat));
+  if (!buildFigure._handGeo) {
+    buildFigure._handGeo = new THREE.TorusGeometry(0.00225, 0.00073, 10, 16, 4.36);
+    buildFigure._wristGeo = new THREE.CylinderGeometry(0.00135, 0.00135, 0.0023, 12);
+  }
+  for (const arm of [armL, armR]) {
+    const hand = new THREE.Group();
+    const ring = new THREE.Mesh(buildFigure._handGeo, headMat);
+    ring.rotation.set(0, Math.PI / 2, Math.PI * 0.62);   // axle across, gap toward the grip
+    const wrist = new THREE.Mesh(buildFigure._wristGeo, headMat);
+    wrist.position.y = 0.0016;
+    ring.castShadow = wrist.castShadow = true;
+    hand.add(ring, wrist);
+    hand.position.set(0, -0.0139, 0.0021);
+    hand.rotation.x = -0.5;
+    arm.add(hand);
+  }
   torso.add(armL, armR);
   const head = new THREE.Group();
   head.position.y = torso.position.y + 0.0144;
@@ -7953,12 +7969,8 @@ function carGeo(body, trim, glassOut) {
   const g = [], { W, WB, WR, AX, SEAT_Y, SEAT_Z, WHEEL_Y, WHEEL_Z } = CAR;
   const glass = 0x9DC3D4, dark = LC.dgrey;
   const G = glassOut || g;
-  for (const sz of [-WB, WB]) for (const sx of [-2.1, 2.1]) {      // front is +z
-    gcyl(g, WR, 1.75, sx, AX, sz, LC.black, 16, Math.PI / 2, Math.PI / 2);
-    gcyl(g, WR * 0.55, 1.8, sx, AX, sz, LC.lgrey, 12, Math.PI / 2, Math.PI / 2);
-    gbox(g, 0.3, WR * 2.6, 0.22, sx, AX, sz, LC.lgrey);            // hub spokes
-    gbox(g, 0.3, 0.22, WR * 1.3, sx, AX, sz, LC.lgrey);
-  }
+  for (const sz of [-WB, WB]) for (const sx of [-2.1, 2.1])        // front is +z
+    bmTyre(g, WR, 2.6, sx, AX, sz);
   gbox(g, 4.4, 1, 13.6, 0, 1.5, 0, dark);                          // chassis plate
   gbox(g, 5.2, 1, 13.6, 0, 2.5, 0, body);                          // floor pan
   for (const sx of [-2.2, 2.2]) gbox(g, 0.8, 6, 13.6, sx, 6, 0, body);   // sills and doors
@@ -8816,6 +8828,32 @@ function bmBuilding(g, glow, glass, signs, solids, R, px0, pz0, qx, qz, district
 
 function bmProp(chunk, t, x, z, yaw, y) { chunk.props.push({ t, x, z, yaw: yaw || 0, y: y || 0 }); }
 
+/* smooth solids of revolution, vertex-colored to match the gbox/gcyl kit.
+   pts are [radius_studs, y_plates]; the result revolves around Y, then the
+   same YXZ euler trick as gcyl re-axes it (rx PI/2 then ry PI/2 = X axle). */
+function glathe(out, pts, seg, hex, px, py, pz, ry = 0, rx = 0) {
+  const v2 = pts.map(q => new THREE.Vector2(q[0] * P, q[1] * PH));
+  const g = new THREE.LatheGeometry(v2, seg).toNonIndexed();
+  g.applyMatrix4(new THREE.Matrix4()
+    .makeRotationFromEuler(new THREE.Euler(rx, ry, 0, 'YXZ'))
+    .setPosition(px * P, py * PH, pz * P));
+  const n = g.attributes.position.count, c = new Float32Array(n * 3), col = new THREE.Color(hex);
+  for (let i = 0; i < n; i++) { c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  out.push(g);
+}
+/* a real LEGO tyre: rounded shoulders, slight crown, bead down to the hub */
+function bmTyre(out, r, halfW, px, py, pz) {
+  const s = r / 1.9;
+  glathe(out, [[1.05 * s, -halfW], [1.55 * s, -halfW], [1.82 * s, -halfW * 0.82],
+               [r, -halfW * 0.45], [r * 1.01, 0], [r, halfW * 0.45],
+               [1.82 * s, halfW * 0.82], [1.55 * s, halfW], [1.05 * s, halfW]],
+         24, 0x1B2A34, px, py, pz, Math.PI / 2, Math.PI / 2);
+  glathe(out, [[0, -halfW * 0.55], [0.72 * s, -halfW * 0.55], [1.06 * s, -halfW * 0.35],
+               [1.06 * s, halfW * 0.35], [0.72 * s, halfW * 0.55], [0, halfW * 0.55]],
+         16, 0x969696, px, py, pz, Math.PI / 2, Math.PI / 2);
+}
+
 /* a field of studs — what makes a surface read as LEGO instead of plastic */
 function bmStuds(g, xa, za, xb, zb, y, col, step) {
   for (let sx = xa + step / 2; sx < xb; sx += step)
@@ -9612,10 +9650,8 @@ const BM_GLASS_C = 0x9DC3D4;
    Every vehicle is built from the driver out at true City scale, with its
    glazing in a second geometry so glass can actually be seen through.      */
 function bmVehWheels(g, axles, half = 2.1) {
-  for (const sz of axles) for (const sx of [-half, half]) {
-    gcyl(g, 1.9, 1.75, sx, 4.75, sz, LC.black, 16, Math.PI / 2, Math.PI / 2);
-    gcyl(g, 1.05, 1.8, sx, 4.75, sz, LC.lgrey, 12, Math.PI / 2, Math.PI / 2);
-  }
+  for (const sz of axles) for (const sx of [-half, half])
+    bmTyre(g, 1.9, 2.7, sx, 4.75, sz);
 }
 function bmSedanGeo(body, trim, extra) {
   const gl = [];
@@ -9764,6 +9800,20 @@ function bmPickVeh(mix, r) {
   for (const [t, w] of mix) { acc -= w; if (acc <= 0) return t; }
   return mix[0][0];
 }
+/* the fountain, turned smooth: basin, pedestal, bowl, finial, still water */
+function bmFountainGeo() {
+  const g = [];
+  glathe(g, [[0,0],[3.15,0],[3.50,0.25],[3.60,0.60],[3.45,0.90],[3.10,1.10],[3.35,1.25],
+             [3.72,1.65],[3.95,2.10],[4.00,2.45],[3.92,2.75],[3.55,3.05],[2.65,3.20],
+             [0.70,3.35],[0.55,3.65],[0.48,6.75],[0.58,7.20],[0.90,7.55],[1.40,7.85],
+             [1.72,8.15],[1.80,8.45],[1.76,8.75],[1.55,9.05],[1.05,9.30],[0.28,9.48],
+             [0.22,10.40],[0.46,10.78],[0.52,11.10],[0.40,11.55],[0.20,12.05],
+             [0.10,12.55],[0,12.90]], 24, 0xC8C8C8, 0, 0, 0);
+  glathe(g, [[0, 3.36], [3.45, 3.36], [3.45, 3.0], [0, 3.0]], 20, 0x469BC3, 0, 0, 0);   // basin water
+  glathe(g, [[0, 9.36], [1.5, 9.36], [1.5, 9.0], [0, 9.0]], 16, 0x5FB7DC, 0, 0, 0);     // bowl water
+  glathe(g, [[0, 9.1], [0.22, 9.3], [0.25, 13.6], [0, 14.2]], 10, 0x9BD1E8, 0, 0, 0);   // the jet
+  return gmerge(g);
+}
 const bmVehGlassMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true,
                                                       opacity: 0.42, depthWrite: false });
 const bmVehInst = new Map();     // type -> { body: InstancedMesh, glass: InstancedMesh }
@@ -9797,6 +9847,7 @@ function bmInitNightLights() {
 }
 function bmInitCarMeshes() {
   if (bmVehInst.size) return;
+  geos.set('prop_fountain', bmFountainGeo());      // every fountain turns smooth
   for (const [t, spec] of Object.entries(BM_VEHICLES)) {
     const { body, glass } = spec.make();
     const mb = new THREE.InstancedMesh(body, propMat, BM_CAR_MAX);
