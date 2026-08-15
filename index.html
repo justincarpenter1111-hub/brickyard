@@ -2074,15 +2074,17 @@ function buildFigure(av) {
   armR.position.fromArray(figParts.get('arm_R').t);
   armL.add(mk('arm_L', armsMat)); armR.add(mk('arm_R', armsMat));
   if (!buildFigure._handGeo) {
-    buildFigure._handGeo = new THREE.TorusGeometry(0.00225, 0.00073, 10, 16, 4.36);
-    buildFigure._wristGeo = new THREE.CylinderGeometry(0.00135, 0.00135, 0.0023, 12);
+    buildFigure._handGeo = new THREE.TorusGeometry(0.0021, 0.0009, 10, 16, 4.36);
+    buildFigure._wristGeo = new THREE.CylinderGeometry(0.00135, 0.00135, 0.0026, 12);
   }
   for (const arm of [armL, armR]) {
     const hand = new THREE.Group();
     const ring = new THREE.Mesh(buildFigure._handGeo, headMat);
-    ring.rotation.set(0, Math.PI / 2, Math.PI * 0.62);   // axle across, gap toward the grip
+    // grip axis runs across the body; the C opens UP-FORWARD (a real minifig
+    // takes a bar from the front), wrist enters at the back-top
+    ring.rotation.set(0, Math.PI / 2, Math.PI * 1.35);
     const wrist = new THREE.Mesh(buildFigure._wristGeo, headMat);
-    wrist.position.y = 0.0016;
+    wrist.position.set(0, 0.0015, -0.001);
     ring.castShadow = wrist.castShadow = true;
     hand.add(ring, wrist);
     hand.position.set(0, -0.0139, 0.0021);
@@ -11091,8 +11093,55 @@ function bmInitAmbient() {
   bmPlane.visible = bmHeli.visible = false;
   beastRoot.add(bmPlane, bmHeli);
 }
+/* the board kid: swim in the pool and sooner or later a kid thunders down
+   the diving board and cannonballs in next to you (Grok's moment #3) */
+let bmBoardKid = null, bmKidT = -1, bmKidCool = 15;
+function bmStepBoardKid(dt) {
+  const px = play.x / P, pz = play.z / P;
+  const inPool = px > BM_POOL.x0 && px < BM_POOL.x1 && pz > BM_POOL.z0 && pz < BM_POOL.z1;
+  bmKidCool -= dt;
+  if (bmKidT < 0) {
+    if (!inPool || bmKidCool > 0 || bmSunReact > 0 || !figParts) return;
+    if (!bmBoardKid) {
+      bmBoardKid = buildFigure({ legs: 0xC91A09, torso: 0x00A3DA, arms: 0xFFC995,
+                                 face: 'happy', hair: 'hair_short', hairColor: 0x352100, acc: 'none' });
+      beastRoot.add(bmBoardKid);
+    }
+    bmKidT = 0;
+    bmBoardKid.visible = true;
+  }
+  bmKidT += dt;
+  const k = bmBoardKid, t = bmKidT;
+  const bx = 634, bz = -190;                     // the board tip
+  if (t < 0.8) {                                 // teeter, arms up, ready
+    k.position.set(bx * P, 11.1 * PH, bz * P);
+    k.rotation.set(0, Math.PI / 2, 0.15 * Math.sin(t * 10));
+    k.userData.armL.rotation.x = -Math.PI * 0.9;
+    k.userData.armR.rotation.x = -Math.PI * 0.9;
+  } else if (t < 1.4) {                          // the cannonball
+    const u = (t - 0.8) / 0.6;
+    k.position.set((bx + 3.5 * u) * P, (11.1 + 6 * u - 12.2 * u * u) * PH, bz * P);
+    k.rotation.set(u * 1.2, Math.PI / 2, 0);
+    k.userData.legL.rotation.x = k.userData.legR.rotation.x = -2.1;   // tuck!
+    k.userData.armL.rotation.x = k.userData.armR.rotation.x = -2.3;
+    if (!k.userData.splashed && u > 0.97) {
+      k.userData.splashed = true;
+      bmSplashSound(true); bmSqueal(); bmSunReact = 2.2;
+    }
+  } else if (t < 2.2) {                          // sink out of sight
+    const u = (t - 1.4) / 0.8;
+    k.position.set((bx + 3.5) * P, (4.9 - 6 * u) * PH, bz * P);
+  } else {
+    k.visible = false; k.userData.splashed = false;
+    k.rotation.set(0, 0, 0);
+    k.userData.legL.rotation.x = k.userData.legR.rotation.x = 0;
+    k.userData.armL.rotation.x = k.userData.armR.rotation.x = 0;
+    bmKidT = -1; bmKidCool = 45;
+  }
+}
 function bmStepAmbient(dt) {
   bmStepTrain(dt);
+  bmStepBoardKid(dt);
   if (bmSunbathers && bmSunReact > 0) {              // the loungers sit up at a splash
     bmSunReact -= dt;
     const up = Math.min(1, bmSunReact > 1.6 ? (2.2 - bmSunReact) * 4 : bmSunReact / 1.6);
